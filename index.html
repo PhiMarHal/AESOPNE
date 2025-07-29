@@ -745,6 +745,21 @@
                 const shipCenterX = this.ship.body.x + this.ship.body.width / 2;
                 const shipCenterY = this.ship.body.y + this.ship.body.height / 2;
 
+                // Calculate ship speed for visual effects
+                const shipSpeed = Math.sqrt(this.ship.body.velocity.x * this.ship.body.velocity.x + this.ship.body.velocity.y * this.ship.body.velocity.y);
+                const maxSpeed = 3000; // Approximate max speed after cannon shot
+                const speedRatio = Math.min(shipSpeed / maxSpeed, 1); // 0 to 1
+
+                // Apply subtle speed-based rotation oscillation to ship
+                if (speedRatio > 0.1) { // Only apply when moving at decent speed
+                    const oscillationTime = this.time.now * 0.01; // Oscillation frequency
+                    const maxRotation = Phaser.Math.DegToRad(10); // Max 10 degrees as requested
+                    const rotationAmount = Math.sin(oscillationTime) * maxRotation * speedRatio;
+                    this.ship.setRotation(rotationAmount);
+                } else {
+                    this.ship.setRotation(0); // No rotation when moving slowly
+                }
+
                 // Handle cannon charging and shaking
                 if (this.cannonCharging) {
                     const chargeProgress = (this.time.now - this.cannonChargeStart) / this.CANNON_CHARGE_TIME;
@@ -755,8 +770,13 @@
 
                     this.cannon.setTint(0xff4444); // Red during charge
                 } else {
-                    this.cannon.x = shipCenterX;
-                    this.cannon.y = shipCenterY + 80;
+                    // Add subtle speed-based positional shake to cannon
+                    const shakeAmount = speedRatio * 3; // Very subtle positional shake
+                    const shakeX = (Math.random() - 0.5) * shakeAmount;
+                    const shakeY = (Math.random() - 0.5) * shakeAmount;
+
+                    this.cannon.x = shipCenterX + shakeX;
+                    this.cannon.y = shipCenterY + 80 + shakeY;
                     this.cannon.setTint(0xffffff); // Normal color
                 }
 
