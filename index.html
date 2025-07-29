@@ -294,8 +294,8 @@
 
                 const clouds = [];
 
-                // 2-4 clouds per grid cell for high density
-                const numClouds = Math.floor(pseudoRandom(seed) * 3) + 2;
+                // 1-2 clouds per grid cell for good density without overkill
+                const numClouds = Math.floor(pseudoRandom(seed)) + 1;
 
                 for (let i = 0; i < numClouds; i++) {
                     const cloudSeed = seed + i * 2137; // Better seed spacing
@@ -307,9 +307,9 @@
                     // Better cloud type selection to ensure both types appear
                     const cloudType = pseudoRandom(cloudSeed + 2) > 0.5 ? 'cloud_1' : 'cloud_2';
 
-                    // Ensure proper scale range 0.4-0.8
+                    // Ensure proper scale range 0.2-0.6
                     const scaleRandom = pseudoRandom(cloudSeed + 3);
-                    const finalScale = 0.4 + (scaleRandom * 0.4); // Guaranteed 0.4-0.8 range
+                    const finalScale = 0.2 + (scaleRandom * 0.4);
 
                     clouds.push({
                         x: x,
@@ -599,9 +599,9 @@
                     const spawnAltitude = (currentZone + 1) * 50;
                     const spawnY = this.SEA_LEVEL - (spawnAltitude * this.PIXELS_PER_METER);
 
-                    const baseCannonballs = 16;
-                    const altitudeReduction = Math.floor(currentZone / 3);
-                    const cannonballCount = Math.max(4, baseCannonballs - altitudeReduction);
+                    const baseCannonballs = 8;
+                    const altitudeReduction = Math.floor(currentZone / 4);
+                    const cannonballCount = Math.max(2, baseCannonballs - altitudeReduction);
 
                     console.log(`Spawning ${cannonballCount} cannonballs`);
 
