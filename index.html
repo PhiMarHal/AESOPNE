@@ -76,6 +76,12 @@
                 this.cannonCooldownStart = 0;
                 this.cooldownGraphics = [];
 
+                // Cloud system
+                this.clouds = [];
+                this.cloudGridData = new Map(); // Stores pre-generated cloud positions by grid key
+                this.lastCloudCheck = 0;
+                this.cloudCheckInterval = 300; // Check every 300ms
+
                 console.log('Vertical Launcher initialized with fresh implementation');
             }
 
@@ -85,6 +91,8 @@
                 this.load.image('wing', 'assets/wing.png');
                 this.load.image('ship', 'assets/ship.png');
                 this.load.image('cannon', 'assets/cannon.png');
+                this.load.image('cloud_1', 'assets/cloud_1.png');
+                this.load.image('cloud_2', 'assets/cloud_2.png');
             }
 
             create() {
@@ -158,6 +166,9 @@
                     cooldownGraphic.setDepth(1001);
                     this.cooldownGraphics.push(cooldownGraphic);
                 }
+
+                // Initialize cloud system
+                this.initializeCloudSystem();
 
                 // Store elements
                 this.gameElements = [
@@ -239,9 +250,173 @@
                 console.log('Game created successfully');
             }
 
+            initializeCloudSystem() {
+                // Pre-generate cloud data using a 2D grid system
+                // This ensures clouds everywhere the player might go
+                console.log('Initializing 2D grid-based cloud system...');
+
+                // Create a pool of cloud sprites that we'll reuse
+                this.clouds = [];
+                for (let i = 0; i < 30; i++) { // Larger pool to prevent exhaustion
+                    const cloudType = i % 2 === 0 ? 'cloud_1' : 'cloud_2';
+                    const cloud = this.add.image(0, 0, cloudType);
+                    cloud.setVisible(false);
+                    cloud.setDepth(10); // Behind game elements but above background
+                    cloud.setAlpha(0.8); // Slightly transparent
+                    this.clouds.push(cloud);
+                }
+
+                // Grid system parameters
+                this.CLOUD_GRID_SIZE = 800; // 800x800 pixel grid cells
+                this.cloudGridData = new Map(); // Stores pre-generated cloud positions by grid key
+            }
+
+            generateCloudDataForGrid(gridX, gridY) {
+                // Generate deterministic cloud positions for a grid cell
+                // Each grid cell is CLOUD_GRID_SIZE x CLOUD_GRID_SIZE pixels
+
+                const centerX = gridX * this.CLOUD_GRID_SIZE;
+                const centerY = gridY * this.CLOUD_GRID_SIZE;
+
+                // Only generate clouds at 100m altitude and above
+                // In the game, higher altitude = lower Y values
+                const minCloudY = this.SEA_LEVEL - (100 * this.PIXELS_PER_METER); // Y at 100m altitude
+                if (centerY >= this.SEA_LEVEL) {
+                    return []; // No clouds at or below sea level
+                }
+
+                // Use grid coordinates as seed for deterministic randomness
+                const seed = Math.abs((gridX * 73 + gridY * 151) * 12347); // Better seed distribution
+                const pseudoRandom = (s) => {
+                    const x = Math.sin(s) * 10000;
+                    return x - Math.floor(x);
+                };
+
+                const clouds = [];
+
+                // 2-4 clouds per grid cell for high density
+                const numClouds = Math.floor(pseudoRandom(seed) * 3) + 2;
+
+                for (let i = 0; i < numClouds; i++) {
+                    const cloudSeed = seed + i * 2137; // Better seed spacing
+
+                    // Position within the grid cell with some overlap into adjacent cells
+                    const x = centerX + (pseudoRandom(cloudSeed) - 0.5) * this.CLOUD_GRID_SIZE * 1.2;
+                    const y = centerY + (pseudoRandom(cloudSeed + 1) - 0.5) * this.CLOUD_GRID_SIZE * 1.2;
+
+                    // Better cloud type selection to ensure both types appear
+                    const cloudType = pseudoRandom(cloudSeed + 2) > 0.5 ? 'cloud_1' : 'cloud_2';
+
+                    // Ensure proper scale range 0.4-0.8
+                    const scaleRandom = pseudoRandom(cloudSeed + 3);
+                    const finalScale = 0.4 + (scaleRandom * 0.4); // Guaranteed 0.4-0.8 range
+
+                    clouds.push({
+                        x: x,
+                        y: y,
+                        type: cloudType,
+                        scale: finalScale
+                    });
+                }
+
+                return clouds;
+            }
+
+            updateClouds() {
+                // Only update clouds periodically for performance
+                if (this.time.now - this.lastCloudCheck < this.cloudCheckInterval) {
+                    return;
+                }
+                this.lastCloudCheck = this.time.now;
+
+                // Get current camera bounds with buffer
+                const camera = this.cameras.main;
+                const buffer = 1200; // Buffer for smooth appearance/disappearance
+                const viewTop = camera.scrollY - buffer;
+                const viewBottom = camera.scrollY + camera.height + buffer;
+                const viewLeft = camera.scrollX - buffer;
+                const viewRight = camera.scrollX + camera.width + buffer;
+
+                // Hide all clouds first
+                this.clouds.forEach(cloud => cloud.setVisible(false));
+
+                // Calculate which grid cells are visible
+                const gridLeft = Math.floor(viewLeft / this.CLOUD_GRID_SIZE);
+                const gridRight = Math.floor(viewRight / this.CLOUD_GRID_SIZE);
+                const gridTop = Math.floor(viewTop / this.CLOUD_GRID_SIZE);
+                const gridBottom = Math.floor(viewBottom / this.CLOUD_GRID_SIZE);
+
+                // Collect all visible clouds with distance to camera center
+                const cameraX = camera.scrollX + camera.width / 2;
+                const cameraY = camera.scrollY + camera.height / 2;
+                const visibleClouds = [];
+
+                // Generate and collect clouds for visible grid cells
+                for (let gridY = gridTop; gridY <= gridBottom; gridY++) {
+                    for (let gridX = gridLeft; gridX <= gridRight; gridX++) {
+
+                        // Create unique key for this grid cell
+                        const gridKey = `${gridX},${gridY}`;
+
+                        // Get or generate cloud data for this grid cell
+                        if (!this.cloudGridData.has(gridKey)) {
+                            this.cloudGridData.set(gridKey, this.generateCloudDataForGrid(gridX, gridY));
+                        }
+
+                        const gridCloudData = this.cloudGridData.get(gridKey);
+
+                        for (const cloudData of gridCloudData) {
+                            // Check if cloud is within view bounds
+                            if (cloudData.x >= viewLeft && cloudData.x <= viewRight &&
+                                cloudData.y >= viewTop && cloudData.y <= viewBottom) {
+
+                                // Calculate distance to camera center for prioritization
+                                const distance = Math.sqrt(
+                                    Math.pow(cloudData.x - cameraX, 2) +
+                                    Math.pow(cloudData.y - cameraY, 2)
+                                );
+
+                                visibleClouds.push({
+                                    ...cloudData,
+                                    distance: distance
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Sort clouds by distance and take only the closest ones that fit in our pool
+                visibleClouds.sort((a, b) => a.distance - b.distance);
+                const cloudsToShow = visibleClouds.slice(0, this.clouds.length);
+
+                // Show the prioritized clouds
+                cloudsToShow.forEach((cloudData, index) => {
+                    const cloud = this.clouds[index];
+                    cloud.setTexture(cloudData.type);
+                    cloud.setPosition(cloudData.x, cloudData.y);
+                    cloud.setScale(cloudData.scale);
+                    cloud.setVisible(true);
+                });
+
+                // Clean up old cloud data to prevent memory buildup
+                if (this.cloudGridData.size > 100) {
+                    const currentGridX = Math.floor(this.ship.x / this.CLOUD_GRID_SIZE);
+                    const currentGridY = Math.floor(this.ship.y / this.CLOUD_GRID_SIZE);
+
+                    for (const [gridKey] of this.cloudGridData) {
+                        const [x, y] = gridKey.split(',').map(Number);
+                        const distance = Math.abs(x - currentGridX) + Math.abs(y - currentGridY);
+                        if (distance > 20) { // Keep grid cells within 20 cells of player
+                            this.cloudGridData.delete(gridKey);
+                        }
+                    }
+                }
+            }
+
             showTitleScreen() {
                 this.gameElements.forEach(element => element.setVisible(false));
                 this.uiElements.forEach(element => element.setVisible(false));
+                this.clouds.forEach(cloud => cloud.setVisible(false));
                 this.titleElements.forEach(element => element.setVisible(true));
                 this.gameState = 'menu';
             }
@@ -269,6 +444,10 @@
                 this.highestAltitudeZone = 0;
                 this.cannonCharging = false;
                 this.dormantCannonballs = [];
+
+                // Reset cloud system
+                this.cloudGridData.clear();
+                this.lastCloudCheck = 0;
 
                 // Reset cooldown state
                 this.cannonOnCooldown = false;
@@ -459,7 +638,7 @@
                 const leftWing = this.add.image(x, y, 'wing');
                 leftWing.setDisplaySize(80, 40);
                 leftWing.setFlipX(true);
-                leftWing.setOrigin(0.9, 0.6); // Righta edge as pivot point
+                leftWing.setOrigin(0.9, 0.6); // Right edge as pivot point
 
                 const rightWing = this.add.image(x, y, 'wing');
                 rightWing.setDisplaySize(80, 40);
@@ -813,6 +992,9 @@
                 this.updateHeightDisplay();
                 this.updateCamera();
                 this.updateCooldownCircles();
+
+                // Update cloud system
+                this.updateClouds();
 
                 // Check for altitude-based spawning
                 this.checkAltitudeSpawning();
