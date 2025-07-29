@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vertical Launcher</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #2c3e50;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+            margin: 0 auto;
+            max-width: 56.25vh;
+            max-height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="game-container"></div>
+
+    <script>
+        class VerticalLauncher extends Phaser.Scene {
+            constructor() {
+                super({ key: 'VerticalLauncher' });
+
+                // Game configuration
+                this.GRAVITY = 1500;
+                this.CANNON_POWER = 3000;
+                this.SEA_LEVEL = 1400;
+                this.SHIP_SIZE = 384;
+                this.CANNON_SIZE = 96;
+                this.CANNONBALL_SIZE = 48;
+                this.FLYING_BALL_SIZE = 80;
+                this.PIXELS_PER_METER = 20;
+                this.CANNON_CHARGE_TIME = 500;
+                this.CANNON_COOLDOWN_TIME = 1000;
+                this.RESPAWN_DISTANCE = 1200;
+
+                // Game state
+                this.gameState = 'menu';
+                this.cannonballs = 4;
+                this.maxHeight = 0;
+                this.currentHeight = 0;
+                this.personalBest = 0;
+                this.flyingBallSpawnRate = 2000;
+                this.flyingBallTimer = 0;
+                this.lastPointerPosition = { x: 450, y: 800 };
+                this.cannonAngle = 0;
+                this.cameraFollowing = false;
+                this.gameStartTime = null;
+                this.gameOverTimer = null;
+                this.initialSpawnCounter = 0;
+                this.highestAltitudeZone = 0;
+                this.cannonCharging = false;
+                this.cannonChargeStart = 0;
+                this.cannonShakeOffset = { x: 0, y: 0 };
+                this.dormantCannonballs = [];
+
+                // Cooldown system
+                this.cannonOnCooldown = false;
+                this.cannonCooldownStart = 0;
+                this.cooldownGraphics = [];
+
+                console.log('Vertical Launcher initialized with fresh implementation');
+            }
+
+            preload() {
+                // Load sprite assets
+                this.load.image('cannonball', 'assets/cannonball.png');
+                this.load.image('wing', 'assets/wing.png');
+                this.load.image('ship', 'assets/ship.png');
+                this.load.image('cannon', 'assets/cannon.png');
+            }
+
+            create() {
+                console.log('Creating game...');
+
+                // Load personal best
+                this.personalBest = parseInt(localStorage.getItem('verticalLauncherBest') || '0');
+
+                // Initialize all groups and variables first
+                this.flyingBalls = this.physics.add.group();
+                this.cannonballProjectiles = this.physics.add.group();
+                this.gameElements = [];
+                this.titleElements = [];
+
+                // Create infinite background
+                this.gameBackground = this.add.rectangle(0, this.SEA_LEVEL - 250000, 200000, 500000, 0x87CEEB);
+                this.seaFloor = this.add.rectangle(0, this.SEA_LEVEL + 800, 200000, 1600, 0x2c5f7b);
+                this.sea = this.add.rectangle(0, this.SEA_LEVEL, 50000, 400, 0x3498db);
+
+                // Create UI areas - fixed to camera
+                this.topUI = this.add.rectangle(450, 100, 900, 200, 0x34495e);
+                this.topUI.setScrollFactor(0);
+                this.topUI.setDepth(999);
+
+                this.bottomUI = this.add.rectangle(450, 1500, 900, 200, 0x34495e);
+                this.bottomUI.setScrollFactor(0);
+                this.bottomUI.setDepth(999);
+
+                // Create ship
+                this.ship = this.physics.add.sprite(450, this.SEA_LEVEL - this.SHIP_SIZE / 2, 'ship');
+                this.ship.setDisplaySize(this.SHIP_SIZE, this.SHIP_SIZE);
+                this.ship.body.setSize(this.SHIP_SIZE, this.SHIP_SIZE);
+                this.ship.body.setGravityY(0);
+                this.ship.body.setCollideWorldBounds(false);
+                this.ship.body.setDrag(0.98);
+                this.ship.body.setAllowGravity(false);
+
+                // Create cannon
+                this.cannon = this.add.image(this.ship.x, this.ship.y + 50, 'cannon');
+                this.cannon.setDisplaySize(this.CANNON_SIZE, this.CANNON_SIZE * 2);
+                this.cannon.setOrigin(0.5, 0.5);
+
+                // Create UI text - fixed to camera
+                this.heightText = this.add.text(40, 60, 'Height: 0m', {
+                    fontSize: '40px',
+                    fill: '#ffffff'
+                });
+                this.heightText.setScrollFactor(0);
+                this.heightText.setDepth(1000);
+
+                this.personalBestText = this.add.text(40, 110, `Best: ${this.personalBest}m`, {
+                    fontSize: '32px',
+                    fill: '#ecf0f1'
+                });
+                this.personalBestText.setScrollFactor(0);
+                this.personalBestText.setDepth(1000);
+
+                // Create cannonball UI with cooldown circles - centered and properly sized
+                this.cannonballUI = [];
+                this.cooldownGraphics = [];
+                for (let i = 0; i < 4; i++) {
+                    const ball = this.add.image(270 + i * 120, 1500, 'cannonball');
+                    ball.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9); // Reduced size
+                    ball.setScrollFactor(0);
+                    ball.setDepth(1000);
+                    this.cannonballUI.push(ball);
+
+                    // Create cooldown circle graphics
+                    const cooldownGraphic = this.add.graphics();
+                    cooldownGraphic.setScrollFactor(0);
+                    cooldownGraphic.setDepth(1001);
+                    this.cooldownGraphics.push(cooldownGraphic);
+                }
+
+                // Store elements
+                this.gameElements = [
+                    this.gameBackground, this.seaFloor, this.sea, this.ship, this.cannon
+                ];
+
+                this.uiElements = [
+                    this.topUI, this.bottomUI, this.heightText,
+                    this.personalBestText, ...this.cannonballUI, ...this.cooldownGraphics
+                ];
+
+                // Create title screen
+                this.titleBG = this.add.rectangle(450, 800, 900, 1600, 0x2c3e50);
+                this.titleBG.setScrollFactor(0);
+                this.titleBG.setDepth(2000);
+
+                this.titleText = this.add.text(450, 500, 'VERTICAL\nLAUNCHER', {
+                    fontSize: '72px',
+                    fill: '#ffffff',
+                    fontWeight: 'bold',
+                    align: 'center'
+                }).setOrigin(0.5);
+                this.titleText.setScrollFactor(0);
+                this.titleText.setDepth(2001);
+
+                this.playButton = this.add.rectangle(450, 800, 360, 120, 0x27ae60);
+                this.playButton.setScrollFactor(0);
+                this.playButton.setDepth(2001);
+
+                this.playButtonText = this.add.text(450, 800, 'PLAY GAME', {
+                    fontSize: '40px',
+                    fill: '#ffffff',
+                    fontWeight: 'bold'
+                }).setOrigin(0.5);
+                this.playButtonText.setScrollFactor(0);
+                this.playButtonText.setDepth(2002);
+
+                this.titleElements = [this.titleBG, this.titleText, this.playButton, this.playButtonText];
+
+                // Start with title screen
+                this.showTitleScreen();
+
+                // Set up interactions
+                this.playButton.setInteractive();
+                this.playButton.on('pointerdown', () => {
+                    console.log('Play button clicked');
+                    this.startGame();
+                });
+
+                // Input handling
+                this.input.on('pointermove', (pointer) => {
+                    this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+                    if (this.gameState === 'playing') {
+                        this.updateCannonAngle();
+                    }
+                });
+
+                this.input.on('pointerdown', (pointer) => {
+                    const canClick = this.gameState === 'playing' &&
+                        this.gameStartTime &&
+                        (this.time.now - this.gameStartTime > 500) &&
+                        !this.cannonCharging &&
+                        !this.cannonOnCooldown &&
+                        this.cannonballs > 0;
+
+                    if (canClick) {
+                        this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+                        this.updateCannonAngle();
+                        this.startCannonCharge();
+                    }
+                });
+
+                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+                // Physics
+                this.physics.world.setBounds(-100000, this.SEA_LEVEL - 300000, 200000, 300000);
+                this.physics.add.overlap(this.ship, this.flyingBalls, this.collectFlyingBall, null, this);
+
+                console.log('Game created successfully');
+            }
+
+            showTitleScreen() {
+                this.gameElements.forEach(element => element.setVisible(false));
+                this.uiElements.forEach(element => element.setVisible(false));
+                this.titleElements.forEach(element => element.setVisible(true));
+                this.gameState = 'menu';
+            }
+
+            showGameScreen() {
+                this.titleElements.forEach(element => element.setVisible(false));
+                this.gameElements.forEach(element => element.setVisible(true));
+                this.uiElements.forEach(element => element.setVisible(true));
+                this.gameState = 'playing';
+            }
+
+            startGame() {
+                console.log('Starting game...');
+                this.showGameScreen();
+
+                // Reset game state
+                this.cannonballs = 4;
+                this.maxHeight = 0;
+                this.currentHeight = 0;
+                this.flyingBallSpawnRate = 300;
+                this.flyingBallTimer = 0;
+                this.cameraFollowing = false;
+                this.gameStartTime = this.time.now;
+                this.initialSpawnCounter = 0;
+                this.highestAltitudeZone = 0;
+                this.cannonCharging = false;
+                this.cannonShakeOffset = { x: 0, y: 0 };
+                this.dormantCannonballs = [];
+
+                // Reset cooldown state
+                this.cannonOnCooldown = false;
+                this.cannonCooldownStart = 0;
+
+                // Reset ship position and physics
+                this.ship.setPosition(450, this.SEA_LEVEL - this.SHIP_SIZE / 2);
+                this.ship.setVelocity(0, 0);
+                this.ship.body.setAllowGravity(false);
+                this.ship.body.setImmovable(false);
+
+                // Reset cannon position and angle
+                this.cannon.x = this.ship.x;
+                this.cannon.y = this.ship.y + 80; // Position cannon lower on the hull
+                this.cannonAngle = Math.PI / 2;
+                this.cannon.setRotation(this.cannonAngle); // Natural rotation, no offset
+
+                // Clear projectiles
+                this.flyingBalls.clear(true, true);
+                this.cannonballProjectiles.clear(true, true);
+
+                // Set initial camera position - don't start following yet
+                this.cameras.main.stopFollow();
+                const initialCameraX = this.ship.x - 450;
+                const initialCameraY = this.SEA_LEVEL - 800;
+                this.cameras.main.setScroll(initialCameraX, initialCameraY);
+
+                // Spawn initial cannonballs
+                this.spawnInitialCannonballs();
+
+                // Update UI
+                this.updateCannonballUI();
+                this.updateHeightDisplay();
+
+                console.log('Game started - Ship floating at sea level:', this.ship.x, this.ship.y);
+            }
+
+            updateCannonAngle() {
+                if (this.gameState !== 'playing') return;
+
+                const cannonX = this.cannon.x;
+                const cannonY = this.cannon.y;
+
+                // Convert screen coordinates to world coordinates
+                const camera = this.cameras.main;
+                const worldPointerX = this.lastPointerPosition.x + camera.scrollX;
+                const worldPointerY = this.lastPointerPosition.y + camera.scrollY;
+
+                this.cannonAngle = Phaser.Math.Angle.Between(cannonX, cannonY, worldPointerX, worldPointerY);
+
+                // Limit cannon to 180° downward arc
+                if (this.cannonAngle < 0) {
+                    this.cannonAngle = 0;
+                }
+                if (this.cannonAngle > Math.PI) {
+                    this.cannonAngle = Math.PI;
+                }
+
+                this.cannon.setRotation(this.cannonAngle + Math.PI / 2); // Fixed rotation
+            }
+
+            startCannonCharge() {
+                if (this.cannonballs <= 0 || this.cannonOnCooldown || this.cannonCharging) {
+                    return;
+                }
+
+                console.log(`Starting cannon charge... Will fire in ${this.CANNON_CHARGE_TIME}ms`);
+                this.cannonCharging = true;
+                this.cannonChargeStart = this.time.now;
+
+                this.chargeTimer = this.time.delayedCall(this.CANNON_CHARGE_TIME, () => {
+                    if (this.cannonCharging && this.gameState === 'playing') {
+                        this.fireCannon();
+                    }
+                });
+            }
+
+            fireCannon() {
+                if (this.cannonballs <= 0) {
+                    return;
+                }
+
+                console.log(`BOOM! Firing cannon with power ${this.CANNON_POWER}`);
+
+                // Reset charging state
+                this.cannonCharging = false;
+                this.cannonShakeOffset = { x: 0, y: 0 };
+                if (this.chargeTimer) {
+                    this.chargeTimer.destroy();
+                    this.chargeTimer = null;
+                }
+
+                // Start cooldown
+                this.cannonOnCooldown = true;
+                this.cannonCooldownStart = this.time.now;
+
+                // Reset cannon visual
+                this.cannon.setTint(0xffffff);
+
+                this.cannonballs--;
+                this.updateCannonballUI();
+
+                // Enable gravity on first shot
+                if (!this.ship.body.allowGravity) {
+                    this.ship.body.setAllowGravity(true);
+                    this.ship.body.setGravityY(this.GRAVITY);
+                    console.log('Gravity enabled for ship');
+                }
+
+                // Create visual projectile
+                const projectile = this.add.image(this.cannon.x, this.cannon.y, 'cannonball');
+                projectile.setDisplaySize(80, 80);
+
+                this.physics.add.existing(projectile);
+                this.cannonballProjectiles.add(projectile);
+
+                // Fire projectile in cannon direction
+                const projectileSpeed = 1600;
+                const projectileVelX = Math.cos(this.cannonAngle) * projectileSpeed;
+                const projectileVelY = Math.sin(this.cannonAngle) * projectileSpeed;
+                projectile.body.setVelocity(projectileVelX, projectileVelY);
+                projectile.body.setGravityY(this.GRAVITY * 0.5);
+
+                // Launch ship in opposite direction
+                const velocityX = -Math.cos(this.cannonAngle) * this.CANNON_POWER;
+                const velocityY = -Math.sin(this.cannonAngle) * this.CANNON_POWER;
+
+                this.ship.setVelocity(velocityX, velocityY);
+
+                console.log(`FIRED! Ship velocity: X=${velocityX.toFixed(0)}, Y=${velocityY.toFixed(0)}`);
+            }
+
+            spawnInitialCannonballs() {
+                for (let i = 0; i < 15; i++) {
+                    const x = this.ship.x + Phaser.Math.Between(-1000, 1000);
+                    const y = this.ship.y - Phaser.Math.Between(50, 500);
+                    this.createFlyingBall(x, y);
+                }
+                console.log('Spawned 15 initial cannonballs with wide spread');
+            }
+
+            checkAltitudeSpawning() {
+                const currentAltitude = this.currentHeight;
+                const currentZone = Math.floor(currentAltitude / 50);
+
+                if (currentZone > this.highestAltitudeZone) {
+                    console.log(`Reached ${currentZone * 50}m altitude - spawning cannonballs at ${(currentZone + 1) * 50}m`);
+
+                    const spawnAltitude = (currentZone + 1) * 50;
+                    const spawnY = this.SEA_LEVEL - (spawnAltitude * this.PIXELS_PER_METER);
+
+                    const baseCannonballs = 16;
+                    const altitudeReduction = Math.floor(currentZone / 3);
+                    const cannonballCount = Math.max(4, baseCannonballs - altitudeReduction);
+
+                    console.log(`Spawning ${cannonballCount} cannonballs`);
+
+                    for (let i = 0; i < cannonballCount; i++) {
+                        const spawnX = this.ship.x + Phaser.Math.Between(-1000, 1000);
+                        const spawnYVaried = spawnY + Phaser.Math.Between(-1000, -50);
+                        this.createFlyingBall(spawnX, spawnYVaried);
+                    }
+
+                    this.highestAltitudeZone = currentZone;
+                }
+            }
+
+            checkDormantCannonballs() {
+                this.dormantCannonballs = this.dormantCannonballs.filter((dormant, index) => {
+                    const distance = Phaser.Math.Distance.Between(dormant.x, dormant.y, this.ship.x, this.ship.y);
+                    if (distance < this.RESPAWN_DISTANCE) {
+                        this.createFlyingBall(dormant.x, dormant.y);
+                        console.log(`Respawned dormant cannonball at altitude ${dormant.altitude}m`);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            createFlyingBall(x, y) {
+                const flyingBall = this.add.image(x, y, 'cannonball');
+                flyingBall.setDisplaySize(this.FLYING_BALL_SIZE, this.FLYING_BALL_SIZE);
+
+                this.physics.add.existing(flyingBall);
+                this.flyingBalls.add(flyingBall);
+
+                // Create wings with proper pivot setup
+                const leftWing = this.add.image(x, y, 'wing');
+                leftWing.setDisplaySize(80, 40);
+                leftWing.setFlipX(true);
+                leftWing.setOrigin(0.9, 0.6); // Righta edge as pivot point
+
+                const rightWing = this.add.image(x, y, 'wing');
+                rightWing.setDisplaySize(80, 40);
+                rightWing.setOrigin(0.1, 0.6); // Left edge as pivot point
+
+                // Generate randomized flapping parameters for variation
+                const leftWingUpAngle = Phaser.Math.DegToRad(Phaser.Math.Between(30, 60));
+                const leftWingDownAngle = Phaser.Math.DegToRad(Phaser.Math.Between(-60, -30));
+                const rightWingUpAngle = Phaser.Math.DegToRad(Phaser.Math.Between(-60, -30));
+                const rightWingDownAngle = Phaser.Math.DegToRad(Phaser.Math.Between(30, 60));
+
+                const flapDuration = Phaser.Math.Between(300, 500);
+                const phaseOffset = Phaser.Math.Between(0, flapDuration);
+
+                // Create rotation-based wing animation
+                this.tweens.add({
+                    targets: leftWing,
+                    rotation: leftWingDownAngle,
+                    duration: flapDuration,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut',
+                    delay: phaseOffset
+                });
+
+                this.tweens.add({
+                    targets: rightWing,
+                    rotation: rightWingDownAngle,
+                    duration: flapDuration,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut',
+                    delay: phaseOffset
+                });
+
+                // Set initial wing angles
+                leftWing.setRotation(leftWingUpAngle);
+                rightWing.setRotation(rightWingUpAngle);
+
+                flyingBall.leftWing = leftWing;
+                flyingBall.rightWing = rightWing;
+
+                flyingBall.body.setVelocity(
+                    Phaser.Math.Between(-80, 80),
+                    Phaser.Math.Between(-40, 40)
+                );
+            }
+
+            collectFlyingBall(ship, flyingBall) {
+                if (this.cannonballs < 4) {
+                    this.cannonballs++;
+                    this.updateCannonballUI();
+
+                    if (flyingBall.leftWing) flyingBall.leftWing.destroy();
+                    if (flyingBall.rightWing) flyingBall.rightWing.destroy();
+                    flyingBall.destroy();
+
+                    console.log(`Collected ball! Total: ${this.cannonballs}`);
+                }
+            }
+
+            updateCannonballUI() {
+                // Update cannonball colors using tint
+                for (let i = 0; i < 4; i++) {
+                    if (i < this.cannonballs) {
+                        this.cannonballUI[i].setTint(0xffffff);
+                        this.cannonballUI[i].setAlpha(1.0);
+                    } else {
+                        this.cannonballUI[i].setTint(0x7f8c8d);
+                        this.cannonballUI[i].setAlpha(0.5);
+                    }
+                }
+
+                this.updateCooldownCircles();
+            }
+
+            updateCooldownCircles() {
+                const canFire = !this.cannonCharging && !this.cannonOnCooldown && this.cannonballs > 0;
+
+                for (let i = 0; i < 4; i++) {
+                    const cooldownGraphic = this.cooldownGraphics[i];
+                    const x = 270 + i * 120;
+                    const y = 1500;
+                    const radius = this.CANNONBALL_SIZE + 4; // Reduced golden outline size
+
+                    cooldownGraphic.clear();
+
+                    // Only show cooldown circle if this slot has a cannonball
+                    if (i < this.cannonballs) {
+                        if (canFire) {
+                            // Full golden circle when ready to fire
+                            cooldownGraphic.lineStyle(4, 0xFFD700);
+                            cooldownGraphic.strokeCircle(x, y, radius);
+                        } else if (this.cannonOnCooldown) {
+                            // Show cooldown progress
+                            const elapsed = this.time.now - this.cannonCooldownStart;
+                            const progress = Math.min(elapsed / this.CANNON_COOLDOWN_TIME, 1);
+
+                            if (progress < 1) {
+                                const startAngle = -Math.PI / 2;
+                                const endAngle = startAngle + (progress * Math.PI * 2);
+
+                                cooldownGraphic.lineStyle(4, 0xFFD700);
+                                cooldownGraphic.beginPath();
+                                cooldownGraphic.arc(x, y, radius, startAngle, endAngle);
+                                cooldownGraphic.strokePath();
+                            } else {
+                                cooldownGraphic.lineStyle(4, 0xFFD700);
+                                cooldownGraphic.strokeCircle(x, y, radius);
+                            }
+                        }
+                    }
+                }
+            }
+
+            updateHeightDisplay() {
+                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
+                const heightAboveSeaInPixels = shipFloatingPosition - this.ship.y;
+                const heightInMeters = Math.max(0, Math.floor(heightAboveSeaInPixels / this.PIXELS_PER_METER));
+
+                this.currentHeight = heightInMeters;
+                this.maxHeight = Math.max(this.maxHeight, heightInMeters);
+                this.heightText.setText(`Height: ${heightInMeters}m`);
+            }
+
+            updateCamera() {
+                if (this.gameState !== 'playing') return;
+
+                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
+                const shipHeightAboveSeaLevel = shipFloatingPosition - this.ship.y;
+
+                const targetX = this.ship.x - 450;
+                let targetY;
+
+                // Switch camera following mode based on height
+                if (shipHeightAboveSeaLevel > 200 && !this.cameraFollowing) {
+                    this.cameraFollowing = true;
+                    console.log('Camera now following ship vertically');
+                } else if (shipHeightAboveSeaLevel < 100 && this.cameraFollowing) {
+                    this.cameraFollowing = false;
+                    console.log('Camera stopped following ship vertically');
+                }
+
+                // Determine target camera position
+                if (this.cameraFollowing) {
+                    targetY = this.ship.y - 800;
+                } else {
+                    targetY = this.SEA_LEVEL - 800;
+                }
+
+                // Smooth camera interpolation with different rates for X and Y
+                const currentX = this.cameras.main.scrollX;
+                const currentY = this.cameras.main.scrollY;
+
+                // Horizontal following: very sticky to keep ship in frame
+                const lerpX = currentX + (targetX - currentX) * 0.5;
+                // Vertical following: smoother but still responsive
+                const lerpY = currentY + (targetY - currentY) * 0.5;
+
+                this.cameras.main.setScroll(lerpX, lerpY);
+            }
+
+            checkGameOver() {
+                if (!this.gameStartTime || (this.time.now - this.gameStartTime < 1000)) {
+                    return;
+                }
+
+                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
+                const shipAtSeaLevel = this.ship.y >= shipFloatingPosition;
+
+                if (shipAtSeaLevel) {
+                    if (this.cannonballs <= 0 && this.ship.body.velocity.y >= -50) {
+                        if (!this.gameOverTimer) {
+                            this.gameOverTimer = this.time.now;
+                        } else if (this.time.now - this.gameOverTimer > 1500) {
+                            this.gameOver();
+                        }
+                    } else {
+                        this.gameOverTimer = null;
+                    }
+
+                    if (this.ship.body.velocity.y > 500) {
+                        this.gameOver();
+                    }
+                } else {
+                    this.gameOverTimer = null;
+                }
+            }
+
+            gameOver() {
+                if (this.gameState === 'gameOver') return;
+
+                this.gameState = 'gameOver';
+                console.log(`Game Over! Max height: ${this.maxHeight}m`);
+
+                if (this.maxHeight > this.personalBest) {
+                    this.personalBest = this.maxHeight;
+                    localStorage.setItem('verticalLauncherBest', this.personalBest.toString());
+                    this.personalBestText.setText(`Best: ${this.personalBest}m`);
+                }
+
+                this.ship.setVelocity(0, 0);
+                this.ship.body.setAllowGravity(false);
+
+                // Reset camera following
+                this.cameraFollowing = false;
+
+                this.time.delayedCall(2000, () => {
+                    this.showGameOverScreen();
+                });
+            }
+
+            showGameOverScreen() {
+                this.cameras.main.setScroll(0, this.SEA_LEVEL - 800);
+                this.showTitleScreen();
+
+                this.titleText.setText('GAME OVER');
+                this.playButtonText.setText('PLAY AGAIN');
+
+                const scoreText = this.add.text(450, 650, `Max Height: ${this.maxHeight}m`, {
+                    fontSize: '48px',
+                    fill: '#e74c3c',
+                    fontWeight: 'bold'
+                }).setOrigin(0.5);
+                scoreText.setScrollFactor(0);
+                scoreText.setDepth(2001);
+
+                this.playButton.removeAllListeners();
+                this.playButton.on('pointerdown', () => {
+                    scoreText.destroy();
+                    this.titleText.setText('VERTICAL\nLAUNCHER');
+                    this.playButtonText.setText('PLAY GAME');
+                    this.restartGame();
+                });
+            }
+
+            restartGame() {
+                console.log('Restarting game - resetting all states');
+
+                this.gameOverTimer = null;
+                this.initialSpawnCounter = 0;
+                this.highestAltitudeZone = 0;
+                this.cannonCharging = false;
+                this.cannonShakeOffset = { x: 0, y: 0 };
+                this.dormantCannonballs = [];
+
+                this.cannonOnCooldown = false;
+                this.cannonCooldownStart = 0;
+
+                if (this.chargeTimer) {
+                    this.chargeTimer.destroy();
+                    this.chargeTimer = null;
+                }
+
+                // Reset camera following state
+                this.cameraFollowing = false;
+
+                this.ship.body.setAllowGravity(false);
+                this.ship.body.setGravityY(0);
+                this.ship.body.setImmovable(false);
+                this.ship.setVelocity(0, 0);
+
+                this.flyingBalls.children.entries.forEach(ball => {
+                    if (ball.leftWing) ball.leftWing.destroy();
+                    if (ball.rightWing) ball.rightWing.destroy();
+                });
+                this.flyingBalls.clear(true, true);
+                this.cannonballProjectiles.clear(true, true);
+
+                this.startGame();
+            }
+
+            update(time, delta) {
+                if (this.gameState !== 'playing') return;
+
+                // Keep ship floating at sea level if gravity not enabled yet
+                if (!this.ship.body.allowGravity) {
+                    this.ship.setPosition(this.ship.x, this.SEA_LEVEL - this.SHIP_SIZE / 2);
+                    this.ship.setVelocity(0, 0);
+                }
+
+                // Update cooldown state
+                if (this.cannonOnCooldown) {
+                    const elapsed = this.time.now - this.cannonCooldownStart;
+                    if (elapsed >= this.CANNON_COOLDOWN_TIME) {
+                        this.cannonOnCooldown = false;
+                        console.log('Cannon cooldown completed - ready to fire');
+                    }
+                }
+
+                // Handle cannon charging and shaking
+                if (this.cannonCharging) {
+                    const chargeProgress = (this.time.now - this.cannonChargeStart) / this.CANNON_CHARGE_TIME;
+                    const shakeIntensity = Math.min(chargeProgress * 20, 20);
+
+                    this.cannonShakeOffset.x = (Math.random() - 0.5) * shakeIntensity;
+                    this.cannonShakeOffset.y = (Math.random() - 0.5) * shakeIntensity;
+
+                    this.cannon.setTint(0xff4444); // Red during charge
+                } else {
+                    this.cannonShakeOffset.x = 0;
+                    this.cannonShakeOffset.y = 0;
+                    this.cannon.setTint(0xffffff); // Normal color
+                }
+
+                // Update graphics positions
+                this.cannon.x = this.ship.x + this.cannonShakeOffset.x;
+                this.cannon.y = this.ship.y + 80 + this.cannonShakeOffset.y; // Keep cannon on hull
+
+                // Update cannon angle
+                this.updateCannonAngle();
+
+                // Update wing positions to follow their cannonballs
+                this.flyingBalls.children.entries.forEach(ball => {
+                    if (ball.leftWing) {
+                        ball.leftWing.x = ball.x - 30;
+                        ball.leftWing.y = ball.y;
+                    }
+                    if (ball.rightWing) {
+                        ball.rightWing.x = ball.x + 30;
+                        ball.rightWing.y = ball.y;
+                    }
+                });
+
+                // Handle space key
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+                    const canFire = this.gameState === 'playing' &&
+                        this.gameStartTime &&
+                        (this.time.now - this.gameStartTime > 500) &&
+                        !this.cannonCharging &&
+                        !this.cannonOnCooldown &&
+                        this.cannonballs > 0;
+
+                    if (canFire) {
+                        this.startCannonCharge();
+                    }
+                }
+
+                // Update game state
+                this.updateHeightDisplay();
+                this.updateCamera();
+                this.updateCooldownCircles();
+
+                // Check for altitude-based spawning
+                this.checkAltitudeSpawning();
+
+                // Check for dormant cannonball respawning
+                this.checkDormantCannonballs();
+
+                // Clean up projectiles
+                this.cannonballProjectiles.children.entries.forEach(projectile => {
+                    const distance = Phaser.Math.Distance.Between(projectile.x, projectile.y, this.ship.x, this.ship.y);
+                    if (distance > 5000) {
+                        projectile.destroy();
+                    }
+                });
+
+                // Clean up flying balls
+                this.flyingBalls.children.entries.forEach(ball => {
+                    const distance = Phaser.Math.Distance.Between(ball.x, ball.y, this.ship.x, this.ship.y);
+                    if (distance > 3000) {
+                        const altitude = Math.floor((this.SEA_LEVEL - ball.y) / this.PIXELS_PER_METER);
+                        this.dormantCannonballs.push({
+                            x: ball.x,
+                            y: ball.y,
+                            altitude: altitude
+                        });
+
+                        console.log(`Stored dormant cannonball at altitude ${altitude}m (total dormant: ${this.dormantCannonballs.length})`);
+
+                        if (ball.leftWing) ball.leftWing.destroy();
+                        if (ball.rightWing) ball.rightWing.destroy();
+                        ball.destroy();
+                    }
+                });
+
+                // Only check game over after gravity is enabled
+                if (this.ship.body.allowGravity) {
+                    this.checkGameOver();
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 900,
+            height: 1600,
+            parent: 'game-container',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false
+                }
+            },
+            scene: VerticalLauncher,
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            }
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+
+</html>
