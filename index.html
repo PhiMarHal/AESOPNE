@@ -54,7 +54,7 @@
 
                 // Game state
                 this.gameState = 'menu';
-                this.cannonballs = 4;
+                this.cannonballSlots = [true, true, true, true]; // Track which slots have cannonballs
                 this.maxHeight = 0;
                 this.currentHeight = 0;
                 this.personalBest = 0;
@@ -75,6 +75,7 @@
                 this.cannonOnCooldown = false;
                 this.cannonCooldownStart = 0;
                 this.cooldownGraphics = [];
+                this.isRollingCannonballs = false;
 
                 // Cloud system
                 this.clouds = [];
@@ -82,7 +83,7 @@
                 this.lastCloudCheck = 0;
                 this.cloudCheckInterval = 300; // Check every 300ms
 
-                console.log('Vertical Launcher initialized with fresh implementation');
+                console.log('Vertical Launcher initialized with slot-based cannonball system');
             }
 
             preload() {
@@ -150,14 +151,27 @@
                 this.personalBestText.setScrollFactor(0);
                 this.personalBestText.setDepth(1000);
 
-                // Create cannonball UI with cooldown circles - centered and properly sized
+                // Create cannonball UI with new positioning - rightmost slot centered at 450
                 this.cannonballUI = [];
+                this.cannonballPlaceholders = []; // Gray placeholders always visible
                 this.cooldownGraphics = [];
+                this.cannonballSlotPositions = [90, 210, 330, 450]; // Rightmost slot at center
+
                 for (let i = 0; i < 4; i++) {
-                    const ball = this.add.image(270 + i * 120, 1500, 'cannonball');
-                    ball.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9); // Reduced size
+                    // Create gray placeholder (always visible)
+                    const placeholder = this.add.image(this.cannonballSlotPositions[i], 1500, 'cannonball');
+                    placeholder.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                    placeholder.setScrollFactor(0);
+                    placeholder.setDepth(999); // Behind actual cannonballs
+                    placeholder.setTint(0x7f8c8d);
+                    placeholder.setAlpha(0.5);
+                    this.cannonballPlaceholders.push(placeholder);
+
+                    // Create actual cannonball (shows when slot is filled)
+                    const ball = this.add.image(this.cannonballSlotPositions[i], 1500, 'cannonball');
+                    ball.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
                     ball.setScrollFactor(0);
-                    ball.setDepth(1000);
+                    ball.setDepth(1000); // On top of placeholders
                     this.cannonballUI.push(ball);
 
                     // Create cooldown circle graphics
@@ -177,7 +191,7 @@
 
                 this.uiElements = [
                     this.topUI, this.bottomUI, this.heightText,
-                    this.personalBestText, ...this.cannonballUI, ...this.cooldownGraphics
+                    this.personalBestText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cooldownGraphics
                 ];
 
                 // Create title screen
@@ -232,7 +246,8 @@
                         (this.time.now - this.gameStartTime > 500) &&
                         !this.cannonCharging &&
                         !this.cannonOnCooldown &&
-                        this.cannonballs > 0;
+                        !this.isRollingCannonballs &&
+                        this.hasCannonballInRightmostSlot();
 
                     if (canClick) {
                         this.lastPointerPosition = { x: pointer.x, y: pointer.y };
@@ -413,6 +428,14 @@
                 }
             }
 
+            hasCannonballInRightmostSlot() {
+                return this.cannonballSlots[3]; // Rightmost slot is index 3
+            }
+
+            getTotalCannonballs() {
+                return this.cannonballSlots.filter(slot => slot).length;
+            }
+
             showTitleScreen() {
                 this.gameElements.forEach(element => element.setVisible(false));
                 this.uiElements.forEach(element => element.setVisible(false));
@@ -433,7 +456,7 @@
                 this.showGameScreen();
 
                 // Reset game state
-                this.cannonballs = 4;
+                this.cannonballSlots = [true, true, true, true]; // All slots start filled
                 this.maxHeight = 0;
                 this.currentHeight = 0;
                 this.flyingBallSpawnRate = 300;
@@ -444,6 +467,7 @@
                 this.highestAltitudeZone = 0;
                 this.cannonCharging = false;
                 this.dormantCannonballs = [];
+                this.isRollingCannonballs = false;
 
                 // Reset cloud system
                 this.cloudGridData.clear();
@@ -511,7 +535,7 @@
             }
 
             startCannonCharge() {
-                if (this.cannonballs <= 0 || this.cannonOnCooldown || this.cannonCharging) {
+                if (!this.hasCannonballInRightmostSlot() || this.cannonOnCooldown || this.cannonCharging || this.isRollingCannonballs) {
                     return;
                 }
 
@@ -527,11 +551,12 @@
             }
 
             fireCannon() {
-                if (this.cannonballs <= 0) {
+                if (!this.hasCannonballInRightmostSlot()) {
                     return;
                 }
 
                 console.log(`BOOM! Firing cannon with power ${this.CANNON_POWER}`);
+                console.log(`Before firing, slots:`, [...this.cannonballSlots]);
 
                 // Reset charging state
                 this.cannonCharging = false;
@@ -543,12 +568,70 @@
                 // Start cooldown
                 this.cannonOnCooldown = true;
                 this.cannonCooldownStart = this.time.now;
+                this.isRollingCannonballs = true;
 
                 // Reset cannon visual
                 this.cannon.setTint(0xffffff);
 
-                this.cannonballs--;
+                // STEP 1: Calculate which balls will move and store their current visual positions
+                const ballMovements = [];
+                for (let i = 0; i < 3; i++) { // Check slots 0,1,2
+                    if (this.cannonballSlots[i]) {
+                        // This ball will move from slot i to slot i+1
+                        const currentX = this.cannonballUI[i].x;
+                        const targetX = this.cannonballSlotPositions[i + 1];
+                        ballMovements.push({
+                            fromSlot: i,
+                            toSlot: i + 1,
+                            currentX: currentX,
+                            targetX: targetX
+                        });
+                    }
+                }
+
+                console.log(`Ball movements:`, ballMovements);
+
+                // STEP 2: Update logical state immediately - roll balls right, clear rightmost
+                const newSlots = [false, false, false, false];
+                for (let i = 0; i < 3; i++) {
+                    if (this.cannonballSlots[i]) {
+                        newSlots[i + 1] = true;
+                    }
+                }
+                this.cannonballSlots = newSlots;
+
+                console.log(`After firing, slots:`, newSlots);
+
+                // STEP 3: Update UI immediately to correct logical state
+                // This will show slot 3 as gray immediately since newSlots[3] = false
                 this.updateCannonballUI();
+
+                // STEP 4: Now animate the visual rolling on top of the correct final state
+                ballMovements.forEach(movement => {
+                    const { fromSlot, toSlot, currentX, targetX } = movement;
+                    const ball = this.cannonballUI[toSlot]; // Ball is now logically at toSlot
+
+                    // Temporarily put it back at the old position for animation
+                    ball.x = currentX;
+
+                    console.log(`Animating ball from slot ${fromSlot} to ${toSlot}, x: ${currentX} -> ${targetX}`);
+
+                    // Animate to new position
+                    this.tweens.add({
+                        targets: ball,
+                        x: targetX,
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+
+                    // Add rotation
+                    this.tweens.add({
+                        targets: ball,
+                        rotation: ball.rotation + Math.PI * 4,
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+                });
 
                 // Enable gravity on first shot
                 if (!this.ship.body.allowGravity) {
@@ -577,8 +660,16 @@
 
                 this.ship.setVelocity(velocityX, velocityY);
 
+                // End rolling when animation completes
+                this.time.delayedCall(this.CANNON_COOLDOWN_TIME, () => {
+                    this.isRollingCannonballs = false;
+                    this.updateCannonballUI(); // Final cleanup
+                });
+
                 console.log(`FIRED! Ship velocity: X=${velocityX.toFixed(0)}, Y=${velocityY.toFixed(0)}`);
             }
+
+
 
             spawnInitialCannonballs() {
                 for (let i = 0; i < 15; i++) {
@@ -688,27 +779,54 @@
             }
 
             collectFlyingBall(ship, flyingBall) {
-                if (this.cannonballs < 4) {
-                    this.cannonballs++;
+                const currentCount = this.getTotalCannonballs();
+
+                if (currentCount < 4) {
+                    // Add one more cannonball and redistribute ALL balls to rightmost positions
+                    const newCount = currentCount + 1;
+
+                    console.log(`Collecting ball. Current count: ${currentCount}, new count: ${newCount}`);
+                    console.log(`Before collection, slots:`, [...this.cannonballSlots]);
+
+                    // Clear all slots and fill from the right
+                    const newSlots = [false, false, false, false];
+                    for (let i = 0; i < newCount; i++) {
+                        newSlots[3 - i] = true; // Fill rightmost slots first: 3, 2, 1, 0
+                    }
+
+                    this.cannonballSlots = newSlots;
                     this.updateCannonballUI();
+
+                    console.log(`After collection, slots:`, newSlots);
 
                     if (flyingBall.leftWing) flyingBall.leftWing.destroy();
                     if (flyingBall.rightWing) flyingBall.rightWing.destroy();
                     flyingBall.destroy();
 
-                    console.log(`Collected ball! Total: ${this.cannonballs}`);
+                    console.log(`Collected ball! New total: ${newCount}, all balls settled rightward`);
                 }
             }
 
             updateCannonballUI() {
-                // Update cannonball colors using tint
+                // Gray placeholders are always visible, just update the actual cannonballs
                 for (let i = 0; i < 4; i++) {
-                    if (i < this.cannonballs) {
-                        this.cannonballUI[i].setTint(0xffffff);
-                        this.cannonballUI[i].setAlpha(1.0);
+                    const ball = this.cannonballUI[i];
+
+                    // Ensure ball is at correct position (unless currently animating)
+                    if (!this.isRollingCannonballs) {
+                        ball.x = this.cannonballSlotPositions[i];
+                        ball.rotation = 0; // Reset rotation when not rolling
+                    }
+
+                    // Show/hide actual cannonball based on slot state
+                    if (this.cannonballSlots[i]) {
+                        // Slot has a cannonball - show white cannonball on top of gray placeholder
+                        ball.setVisible(true);
+                        ball.setTint(0xffffff);
+                        ball.setAlpha(1.0);
                     } else {
-                        this.cannonballUI[i].setTint(0x7f8c8d);
-                        this.cannonballUI[i].setAlpha(0.5);
+                        // Slot is empty - hide the white cannonball, gray placeholder shows through
+                        ball.setVisible(false);
                     }
                 }
 
@@ -716,18 +834,19 @@
             }
 
             updateCooldownCircles() {
-                const canFire = !this.cannonCharging && !this.cannonOnCooldown && this.cannonballs > 0;
+                const canFire = !this.cannonCharging && !this.cannonOnCooldown && !this.isRollingCannonballs && this.hasCannonballInRightmostSlot();
 
+                // Only show cooldown circle on rightmost slot (index 3)
                 for (let i = 0; i < 4; i++) {
                     const cooldownGraphic = this.cooldownGraphics[i];
-                    const x = 270 + i * 120;
-                    const y = 1500;
-                    const radius = this.CANNONBALL_SIZE + 4; // Reduced golden outline size
-
                     cooldownGraphic.clear();
 
-                    // Only show cooldown circle if this slot has a cannonball
-                    if (i < this.cannonballs) {
+                    // Only show circle on rightmost slot that has a cannonball
+                    if (i === 3 && this.cannonballSlots[i]) {
+                        const x = this.cannonballSlotPositions[i];
+                        const y = 1500;
+                        const radius = this.CANNONBALL_SIZE + 4;
+
                         if (canFire) {
                             // Full golden circle when ready to fire
                             cooldownGraphic.lineStyle(4, 0xFFD700);
@@ -798,7 +917,7 @@
                 const shipAtSeaLevel = this.ship.y >= shipFloatingPosition;
 
                 if (shipAtSeaLevel) {
-                    if (this.cannonballs <= 0 && this.ship.body.velocity.y >= -50) {
+                    if (this.getTotalCannonballs() <= 0 && this.ship.body.velocity.y >= -50) {
                         if (!this.gameOverTimer) {
                             this.gameOverTimer = this.time.now;
                         } else if (this.time.now - this.gameOverTimer > 1500) {
@@ -875,6 +994,7 @@
                 this.cannonCharging = false;
                 this.cannonShakeOffset = { x: 0, y: 0 };
                 this.dormantCannonballs = [];
+                this.isRollingCannonballs = false;
 
                 this.cannonOnCooldown = false;
                 this.cannonCooldownStart = 0;
@@ -981,7 +1101,8 @@
                         (this.time.now - this.gameStartTime > 500) &&
                         !this.cannonCharging &&
                         !this.cannonOnCooldown &&
-                        this.cannonballs > 0;
+                        !this.isRollingCannonballs &&
+                        this.hasCannonballInRightmostSlot();
 
                     if (canFire) {
                         this.startCannonCharge();
