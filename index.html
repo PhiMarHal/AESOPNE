@@ -159,7 +159,7 @@
                 this.heightText.setScrollFactor(0);
                 this.heightText.setDepth(1000);
 
-                this.personalBestText = this.add.text(40, 110, `Best: ${this.personalBest}m`, {
+                this.personalBestText = this.add.text(40, 120, `Best: ${this.personalBest}m`, {
                     fontSize: '32px',
                     fill: '#ecf0f1'
                 });
@@ -167,17 +167,19 @@
                 this.personalBestText.setDepth(1000);
 
                 // Create quest UI elements - positioned at 60-70% to the right
-                this.questFlagIcon = this.add.image(650, 80, 'flag_milady'); // Default texture, will be updated
-                this.questFlagIcon.setDisplaySize(60, 60);
+                this.questFlagIcon = this.add.image(650, 100, 'flag_milady'); // Default texture, will be updated
+                this.questFlagIcon.setDisplaySize(120, 120); // 2x bigger for better visibility
+                this.questFlagBaseScale = this.questFlagIcon.scaleX; // Store the scale that gives us 120x120
                 this.questFlagIcon.setScrollFactor(0);
                 this.questFlagIcon.setDepth(1000);
                 this.questFlagIcon.setVisible(false); // Hidden until quest starts
 
-                this.questCountText = this.add.text(720, 80, '4', {
-                    fontSize: '48px',
+                this.questCountText = this.add.text(760, 100, '4', { // Further right and down
+                    fontSize: '72px', // 50% bigger (was 48px)
                     fill: '#FFD700',
                     fontWeight: 'bold'
                 }).setOrigin(0.5);
+                this.questCountBaseScale = this.questCountText.scaleX; // Store the base scale
                 this.questCountText.setScrollFactor(0);
                 this.questCountText.setDepth(1000);
                 this.questCountText.setVisible(false); // Hidden until quest starts
@@ -494,9 +496,10 @@
 
                 console.log(`🎯 NEW QUEST: Collect ${this.questTargetCount} ${this.questTargetFlag} flags (Quest Level ${this.questLevel})`);
 
-                // Update UI
+                // Update UI - texture change maintains the display size
                 this.questFlagIcon.setTexture(this.questTargetFlag);
                 this.questFlagIcon.setVisible(true);
+
                 this.questCountText.setText(this.questTargetCount.toString());
                 this.questCountText.setVisible(true);
 
@@ -510,6 +513,28 @@
                     const remaining = this.questTargetCount - this.questCurrentCount;
 
                     console.log(`🎯 Quest progress: ${this.questCurrentCount}/${this.questTargetCount} ${flagType} collected`);
+
+                    // Visual feedback - use the correct base scales
+                    const targetFlagScale = this.questFlagBaseScale * 1.4;
+                    const targetCountScale = this.questCountBaseScale * 1.4;
+
+                    this.tweens.add({
+                        targets: this.questFlagIcon,
+                        scaleX: targetFlagScale,
+                        scaleY: targetFlagScale,
+                        duration: 200,
+                        ease: 'Back.easeOut',
+                        yoyo: true
+                    });
+
+                    this.tweens.add({
+                        targets: this.questCountText,
+                        scaleX: targetCountScale,
+                        scaleY: targetCountScale,
+                        duration: 200,
+                        ease: 'Back.easeOut',
+                        yoyo: true
+                    });
 
                     // Update UI
                     this.questCountText.setText(remaining.toString());
@@ -713,9 +738,11 @@
                 this.ship.body.setAllowGravity(false);
                 this.ship.body.setImmovable(false);
 
-                // Reset cannon position and angle
-                this.cannon.x = this.ship.x;
-                this.cannon.y = this.ship.y + 80;
+                // Reset cannon position and angle - use same calculation as update loop
+                const initialShipCenterX = this.ship.x; // Ship sprite center
+                const initialShipCenterY = this.ship.y;
+                this.cannon.x = initialShipCenterX;
+                this.cannon.y = initialShipCenterY + 80;
                 this.cannonAngle = Math.PI / 2;
                 this.cannon.setRotation(this.cannonAngle);
 
@@ -1409,8 +1436,11 @@
                 }
 
                 // Position cannon based on ship's physics body position for perfect sync
-                const shipCenterX = this.ship.body.x + this.ship.body.width / 2;
-                const shipCenterY = this.ship.body.y + this.ship.body.height / 2;
+                // Use sprite position as fallback if body isn't ready (fixes first shot jerkiness)
+                const shipCenterX = this.ship.body && this.ship.body.x !== undefined ?
+                    this.ship.body.x + this.ship.body.width / 2 : this.ship.x;
+                const shipCenterY = this.ship.body && this.ship.body.y !== undefined ?
+                    this.ship.body.y + this.ship.body.height / 2 : this.ship.y;
 
                 // Calculate ship speed for visual effects
                 const shipSpeed = Math.sqrt(this.ship.body.velocity.x * this.ship.body.velocity.x + this.ship.body.velocity.y * this.ship.body.velocity.y);
