@@ -96,6 +96,10 @@
                 this.load.image('cloud_2', 'assets/cloud_2.png');
                 this.load.image('button_help', 'assets/button_help.png');
                 this.load.image('button_destruct', 'assets/button_destruct.png');
+                this.load.image('flag_milady', 'assets/flag_milady.png');
+                this.load.image('flag_bayc', 'assets/flag_bayc.png');
+                this.load.image('flag_noun', 'assets/flag_noun.png');
+                this.load.image('flag_doodle', 'assets/flag_doodle.png');
             }
 
             create() {
@@ -850,15 +854,15 @@
                 this.dormantCannonballs = this.dormantCannonballs.filter((dormant, index) => {
                     const distance = Phaser.Math.Distance.Between(dormant.x, dormant.y, this.ship.x, this.ship.y);
                     if (distance < this.RESPAWN_DISTANCE) {
-                        this.createFlyingBall(dormant.x, dormant.y);
-                        console.log(`Respawned dormant cannonball at altitude ${dormant.altitude}m`);
+                        this.createFlyingBall(dormant.x, dormant.y, dormant.flagType);
+                        console.log(`Respawned dormant cannonball with ${dormant.flagType} at altitude ${dormant.altitude}m`);
                         return false;
                     }
                     return true;
                 });
             }
 
-            createFlyingBall(x, y) {
+            createFlyingBall(x, y, flagType = null) {
                 const flyingBall = this.add.image(x, y, 'cannonball');
                 flyingBall.setDisplaySize(this.FLYING_BALL_SIZE, this.FLYING_BALL_SIZE);
 
@@ -874,6 +878,14 @@
                 const rightWing = this.add.image(x, y, 'wing');
                 rightWing.setDisplaySize(80, 40);
                 rightWing.setOrigin(0.1, 0.6); // Left edge as pivot point
+
+                // Create flag - random type if not specified
+                const flagTypes = ['flag_milady', 'flag_bayc', 'flag_noun', 'flag_doodle'];
+                const selectedFlagType = flagType || Phaser.Utils.Array.GetRandom(flagTypes);
+
+                const flag = this.add.image(x, y, selectedFlagType);
+                flag.setDisplaySize(64, 64);
+                flag.setOrigin(0.5, 0.5);
 
                 // Generate randomized flapping parameters for variation
                 const leftWingUpAngle = Phaser.Math.DegToRad(Phaser.Math.Between(30, 60));
@@ -909,8 +921,11 @@
                 leftWing.setRotation(leftWingUpAngle);
                 rightWing.setRotation(rightWingUpAngle);
 
+                // Attach components to the flying ball
                 flyingBall.leftWing = leftWing;
                 flyingBall.rightWing = rightWing;
+                flyingBall.flag = flag;
+                flyingBall.flagType = selectedFlagType; // Store flag type for dormant system
 
                 flyingBall.body.setVelocity(
                     Phaser.Math.Between(-80, 80),
@@ -954,8 +969,10 @@
 
                     console.log(`After collection, slots:`, newSlots, `New ball in slot ${newBallSlot} with light tint`);
 
+                    // Destroy all components
                     if (flyingBall.leftWing) flyingBall.leftWing.destroy();
                     if (flyingBall.rightWing) flyingBall.rightWing.destroy();
+                    if (flyingBall.flag) flyingBall.flag.destroy();
                     flyingBall.destroy();
 
                     console.log(`Collected ball! New total: ${newCount}, all balls settled rightward`);
@@ -1170,6 +1187,7 @@
                 this.flyingBalls.children.entries.forEach(ball => {
                     if (ball.leftWing) ball.leftWing.destroy();
                     if (ball.rightWing) ball.rightWing.destroy();
+                    if (ball.flag) ball.flag.destroy();
                 });
                 this.flyingBalls.clear(true, true);
                 this.cannonballProjectiles.clear(true, true);
@@ -1237,7 +1255,7 @@
                 // Update cannon angle
                 this.updateCannonAngle();
 
-                // Update wing positions to follow their cannonballs
+                // Update wing and flag positions to follow their cannonballs
                 this.flyingBalls.children.entries.forEach(ball => {
                     if (ball.leftWing) {
                         ball.leftWing.x = ball.x - 30;
@@ -1246,6 +1264,10 @@
                     if (ball.rightWing) {
                         ball.rightWing.x = ball.x + 30;
                         ball.rightWing.y = ball.y;
+                    }
+                    if (ball.flag) {
+                        ball.flag.x = ball.x;
+                        ball.flag.y = ball.y;
                     }
                 });
 
@@ -1294,13 +1316,15 @@
                         this.dormantCannonballs.push({
                             x: ball.x,
                             y: ball.y,
-                            altitude: altitude
+                            altitude: altitude,
+                            flagType: ball.flagType // Store flag type for later respawn
                         });
 
-                        console.log(`Stored dormant cannonball at altitude ${altitude}m (total dormant: ${this.dormantCannonballs.length})`);
+                        console.log(`Stored dormant cannonball with ${ball.flagType} at altitude ${altitude}m (total dormant: ${this.dormantCannonballs.length})`);
 
                         if (ball.leftWing) ball.leftWing.destroy();
                         if (ball.rightWing) ball.rightWing.destroy();
+                        if (ball.flag) ball.flag.destroy();
                         ball.destroy();
                     }
                 });
