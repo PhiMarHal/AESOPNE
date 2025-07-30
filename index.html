@@ -55,6 +55,7 @@
                 // Game state
                 this.gameState = 'menu';
                 this.cannonballSlots = [true, true, true, true]; // Track which slots have cannonballs
+                this.cannonballSlotFlags = [null, null, null, null]; // Track flag types for each slot
                 this.maxHeight = 0;
                 this.currentHeight = 0;
                 this.personalBest = 0;
@@ -70,6 +71,13 @@
                 this.cannonCharging = false;
                 this.cannonChargeStart = 0;
                 this.dormantCannonballs = [];
+
+                // Super Shot quest system
+                this.superShotReady = true; // First shot is always a Super Shot
+                this.questTargetFlag = null; // Current quest target flag
+                this.questTargetCount = 4; // How many we need to collect
+                this.questCurrentCount = 0; // How many we've collected
+                this.questLevel = 1; // Which quest we're on (affects target count)
 
                 // Cooldown system
                 this.cannonOnCooldown = false;
@@ -96,6 +104,7 @@
                 this.load.image('cloud_2', 'assets/cloud_2.png');
                 this.load.image('button_help', 'assets/button_help.png');
                 this.load.image('button_destruct', 'assets/button_destruct.png');
+                this.load.image('button_start', 'assets/button_start.png');
                 this.load.image('flag_milady', 'assets/flag_milady.png');
                 this.load.image('flag_bayc', 'assets/flag_bayc.png');
                 this.load.image('flag_noun', 'assets/flag_noun.png');
@@ -157,8 +166,25 @@
                 this.personalBestText.setScrollFactor(0);
                 this.personalBestText.setDepth(1000);
 
+                // Create quest UI elements - positioned at 60-70% to the right
+                this.questFlagIcon = this.add.image(650, 80, 'flag_milady'); // Default texture, will be updated
+                this.questFlagIcon.setDisplaySize(60, 60);
+                this.questFlagIcon.setScrollFactor(0);
+                this.questFlagIcon.setDepth(1000);
+                this.questFlagIcon.setVisible(false); // Hidden until quest starts
+
+                this.questCountText = this.add.text(720, 80, '4', {
+                    fontSize: '48px',
+                    fill: '#FFD700',
+                    fontWeight: 'bold'
+                }).setOrigin(0.5);
+                this.questCountText.setScrollFactor(0);
+                this.questCountText.setDepth(1000);
+                this.questCountText.setVisible(false); // Hidden until quest starts
+
                 // Create cannonball UI with new positioning - rightmost slot centered at 450
                 this.cannonballUI = [];
+                this.cannonballUIFlags = []; // Flags for UI cannonballs
                 this.cannonballPlaceholders = []; // Gray placeholders always visible
                 this.cooldownGraphics = [];
                 this.cannonballSlotPositions = [90, 210, 330, 450]; // Rightmost slot at center
@@ -180,10 +206,18 @@
                     ball.setDepth(1000); // On top of placeholders
                     this.cannonballUI.push(ball);
 
+                    // Create flag for cannonball (starts hidden)
+                    const flag = this.add.image(this.cannonballSlotPositions[i], 1500, 'flag_milady'); // Default texture
+                    flag.setDisplaySize(72, 72); // Better size for UI cannonballs
+                    flag.setScrollFactor(0);
+                    flag.setDepth(1001); // On top of cannonballs
+                    flag.setVisible(false);
+                    this.cannonballUIFlags.push(flag);
+
                     // Create cooldown circle graphics
                     const cooldownGraphic = this.add.graphics();
                     cooldownGraphic.setScrollFactor(0);
-                    cooldownGraphic.setDepth(1001);
+                    cooldownGraphic.setDepth(1002); // On top of flags
                     this.cooldownGraphics.push(cooldownGraphic);
                 }
 
@@ -205,7 +239,7 @@
 
                 this.uiElements = [
                     this.topUI, this.bottomUI, this.heightText,
-                    this.personalBestText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cooldownGraphics,
+                    this.personalBestText, this.questFlagIcon, this.questCountText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cannonballUIFlags, ...this.cooldownGraphics,
                     this.helpButton
                 ];
 
@@ -214,7 +248,7 @@
                 this.titleBG.setScrollFactor(0);
                 this.titleBG.setDepth(2000);
 
-                this.titleText = this.add.text(450, 500, 'VERTICAL\nLAUNCHER', {
+                this.titleText = this.add.text(450, 500, 'AESOPNE', {
                     fontSize: '72px',
                     fill: '#ffffff',
                     fontWeight: 'bold',
@@ -223,19 +257,12 @@
                 this.titleText.setScrollFactor(0);
                 this.titleText.setDepth(2001);
 
-                this.playButton = this.add.rectangle(450, 800, 360, 120, 0x27ae60);
+                this.playButton = this.add.image(450, 800, 'button_start');
+                this.playButton.setDisplaySize(360, 180); // 2:1 ratio for the sprite
                 this.playButton.setScrollFactor(0);
                 this.playButton.setDepth(2001);
 
-                this.playButtonText = this.add.text(450, 800, 'PLAY GAME', {
-                    fontSize: '40px',
-                    fill: '#ffffff',
-                    fontWeight: 'bold'
-                }).setOrigin(0.5);
-                this.playButtonText.setScrollFactor(0);
-                this.playButtonText.setDepth(2002);
-
-                this.titleElements = [this.titleBG, this.titleText, this.playButton, this.playButtonText];
+                this.titleElements = [this.titleBG, this.titleText, this.playButton];
 
                 // Start with title screen
                 this.showTitleScreen();
@@ -447,6 +474,57 @@
                 return this.cannonballSlots[3]; // Rightmost slot is index 3
             }
 
+            getTotalCannonballs() {
+                return this.cannonballSlots.filter(slot => slot).length;
+            }
+
+            isSuperShotReady() {
+                // Super Shot is ready based on quest completion or first shot
+                return this.superShotReady;
+            }
+
+            startNewQuest() {
+                // Select a random flag type for the new quest
+                const flagTypes = ['flag_milady', 'flag_bayc', 'flag_noun', 'flag_doodle'];
+                this.questTargetFlag = Phaser.Utils.Array.GetRandom(flagTypes);
+
+                // Calculate target count: 4, 8, 16, 32, etc.
+                this.questTargetCount = 4 * Math.pow(2, this.questLevel - 1);
+                this.questCurrentCount = 0;
+
+                console.log(`🎯 NEW QUEST: Collect ${this.questTargetCount} ${this.questTargetFlag} flags (Quest Level ${this.questLevel})`);
+
+                // Update UI
+                this.questFlagIcon.setTexture(this.questTargetFlag);
+                this.questFlagIcon.setVisible(true);
+                this.questCountText.setText(this.questTargetCount.toString());
+                this.questCountText.setVisible(true);
+
+                this.questLevel++;
+            }
+
+            updateQuestProgress(flagType) {
+                // Only count if it matches our target and we have an active quest
+                if (this.questTargetFlag && flagType === this.questTargetFlag) {
+                    this.questCurrentCount++;
+                    const remaining = this.questTargetCount - this.questCurrentCount;
+
+                    console.log(`🎯 Quest progress: ${this.questCurrentCount}/${this.questTargetCount} ${flagType} collected`);
+
+                    // Update UI
+                    this.questCountText.setText(remaining.toString());
+
+                    // Check if quest is complete
+                    if (remaining <= 0) {
+                        console.log(`🚀 QUEST COMPLETE! Super Shot unlocked!`);
+                        this.superShotReady = true;
+
+                        // Immediately start next quest
+                        this.startNewQuest();
+                    }
+                }
+            }
+
             showHelpPopup() {
                 if (this.gameState !== 'playing') return;
 
@@ -576,10 +654,6 @@
                 this.gameState = 'playing';
             }
 
-            getTotalCannonballs() {
-                return this.cannonballSlots.filter(slot => slot).length;
-            }
-
             showTitleScreen() {
                 this.gameElements.forEach(element => element.setVisible(false));
                 this.uiElements.forEach(element => element.setVisible(false));
@@ -601,6 +675,7 @@
 
                 // Reset game state
                 this.cannonballSlots = [true, true, true, true]; // All slots start filled
+                this.cannonballSlotFlags = [null, null, null, null]; // No flags initially
                 this.maxHeight = 0;
                 this.currentHeight = 0;
                 this.flyingBallSpawnRate = 300;
@@ -612,6 +687,17 @@
                 this.cannonCharging = false;
                 this.dormantCannonballs = [];
                 this.isRollingCannonballs = false;
+
+                // Reset Super Shot quest system
+                this.superShotReady = true; // First shot is always a Super Shot
+                this.questTargetFlag = null; // No quest active yet
+                this.questTargetCount = 4;
+                this.questCurrentCount = 0;
+                this.questLevel = 1;
+
+                // Hide quest UI initially
+                this.questFlagIcon.setVisible(false);
+                this.questCountText.setVisible(false);
 
                 // Reset cloud system
                 this.cloudGridData.clear();
@@ -699,7 +785,22 @@
                     return;
                 }
 
-                console.log(`BOOM! Firing cannon with power ${this.CANNON_POWER}`);
+                // Check if this is a Super Shot!
+                const isSuperShot = this.isSuperShotReady();
+                const cannonPower = isSuperShot ? this.CANNON_POWER * 2 : this.CANNON_POWER;
+
+                if (isSuperShot) {
+                    console.log(`💥 SUPER SHOT FIRED! Using ${cannonPower} power!`);
+                    this.superShotReady = false; // Consume the Super Shot
+
+                    // If this was the first shot, start the quest system
+                    if (!this.questTargetFlag) {
+                        this.startNewQuest();
+                    }
+                } else {
+                    console.log(`BOOM! Firing cannon with power ${cannonPower}`);
+                }
+
                 console.log(`Before firing, slots:`, [...this.cannonballSlots]);
 
                 // Reset charging state
@@ -735,47 +836,25 @@
 
                 console.log(`Ball movements:`, ballMovements);
 
-                // STEP 2: Update logical state immediately - roll balls right, clear rightmost
+                // STEP 2: Update logical state immediately - roll balls AND flags right, clear rightmost
                 const newSlots = [false, false, false, false];
+                const newFlags = [null, null, null, null];
+
                 for (let i = 0; i < 3; i++) {
                     if (this.cannonballSlots[i]) {
                         newSlots[i + 1] = true;
+                        newFlags[i + 1] = this.cannonballSlotFlags[i]; // Move flag with ball
                     }
                 }
+
                 this.cannonballSlots = newSlots;
+                this.cannonballSlotFlags = newFlags;
 
                 console.log(`After firing, slots:`, newSlots);
+                console.log(`After firing, flags:`, newFlags);
 
-                // STEP 3: Update UI immediately to correct logical state
-                // This will show slot 3 as gray immediately since newSlots[3] = false
+                // STEP 3: Update UI immediately to show fired slot as gray immediately
                 this.updateCannonballUI();
-
-                // STEP 4: Now animate the visual rolling on top of the correct final state
-                ballMovements.forEach(movement => {
-                    const { fromSlot, toSlot, currentX, targetX } = movement;
-                    const ball = this.cannonballUI[toSlot]; // Ball is now logically at toSlot
-
-                    // Temporarily put it back at the old position for animation
-                    ball.x = currentX;
-
-                    console.log(`Animating ball from slot ${fromSlot} to ${toSlot}, x: ${currentX} -> ${targetX}`);
-
-                    // Animate to new position
-                    this.tweens.add({
-                        targets: ball,
-                        x: targetX,
-                        duration: this.CANNON_COOLDOWN_TIME,
-                        ease: 'Power2.easeOut'
-                    });
-
-                    // Add rotation
-                    this.tweens.add({
-                        targets: ball,
-                        rotation: ball.rotation + Math.PI * 4,
-                        duration: this.CANNON_COOLDOWN_TIME,
-                        ease: 'Power2.easeOut'
-                    });
-                });
 
                 // Enable gravity on first shot
                 if (!this.ship.body.allowGravity) {
@@ -799,10 +878,61 @@
                 projectile.body.setGravityY(this.GRAVITY * 0.5);
 
                 // Launch ship in opposite direction
-                const velocityX = -Math.cos(this.cannonAngle) * this.CANNON_POWER;
-                const velocityY = -Math.sin(this.cannonAngle) * this.CANNON_POWER;
+                const velocityX = -Math.cos(this.cannonAngle) * cannonPower;
+                const velocityY = -Math.sin(this.cannonAngle) * cannonPower;
 
                 this.ship.setVelocity(velocityX, velocityY);
+
+                // STEP 4: Now animate the visual rolling on top of the correct final state
+                ballMovements.forEach(movement => {
+                    const { fromSlot, toSlot, currentX, targetX } = movement;
+                    const ball = this.cannonballUI[toSlot]; // Ball is now logically at toSlot
+                    const flag = this.cannonballUIFlags[toSlot]; // Flag is now logically at toSlot
+
+                    // Temporarily put ball back at the old position for animation
+                    ball.x = currentX;
+
+                    // If there's a flag, put it back at old position too
+                    if (this.cannonballSlotFlags[toSlot]) {
+                        flag.x = currentX;
+                    }
+
+                    console.log(`Animating ball from slot ${fromSlot} to ${toSlot}, x: ${currentX} -> ${targetX}`);
+
+                    // Animate ball to new position
+                    this.tweens.add({
+                        targets: ball,
+                        x: targetX,
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+
+                    // Animate flag to new position (if exists)
+                    if (this.cannonballSlotFlags[toSlot]) {
+                        this.tweens.add({
+                            targets: flag,
+                            x: targetX,
+                            duration: this.CANNON_COOLDOWN_TIME,
+                            ease: 'Power2.easeOut'
+                        });
+
+                        // Add rotation to flag too!
+                        this.tweens.add({
+                            targets: flag,
+                            rotation: flag.rotation + Math.PI * 4,
+                            duration: this.CANNON_COOLDOWN_TIME,
+                            ease: 'Power2.easeOut'
+                        });
+                    }
+
+                    // Add rotation to ball
+                    this.tweens.add({
+                        targets: ball,
+                        rotation: ball.rotation + Math.PI * 4,
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+                });
 
                 // End rolling when animation completes
                 this.time.delayedCall(this.CANNON_COOLDOWN_TIME, () => {
@@ -812,8 +942,6 @@
 
                 console.log(`FIRED! Ship velocity: X=${velocityX.toFixed(0)}, Y=${velocityY.toFixed(0)}`);
             }
-
-
 
             spawnInitialCannonballs() {
                 for (let i = 0; i < 15; i++) {
@@ -937,37 +1065,75 @@
                 const currentCount = this.getTotalCannonballs();
 
                 if (currentCount < 4) {
-                    // Add one more cannonball and redistribute ALL balls to rightmost positions
-                    const newCount = currentCount + 1;
+                    if (this.isRollingCannonballs) {
+                        // During rolling, find the rightmost empty slot in the FINAL locked state
+                        let targetSlot = -1;
+                        for (let i = 3; i >= 0; i--) { // Check from right to left
+                            if (!this.cannonballSlots[i]) {
+                                targetSlot = i;
+                                break;
+                            }
+                        }
 
-                    console.log(`Collecting ball. Current count: ${currentCount}, new count: ${newCount}`);
-                    console.log(`Before collection, slots:`, [...this.cannonballSlots]);
+                        if (targetSlot !== -1) {
+                            this.cannonballSlots[targetSlot] = true;
+                            this.cannonballSlotFlags[targetSlot] = flyingBall.flagType;
+                            this.updateCannonballUI();
 
-                    // Clear all slots and fill from the right
-                    const newSlots = [false, false, false, false];
-                    for (let i = 0; i < newCount; i++) {
-                        newSlots[3 - i] = true; // Fill rightmost slots first: 3, 2, 1, 0
+                            console.log(`Collected ball during rolling! Filled rightmost empty slot ${targetSlot} with flag ${flyingBall.flagType}`);
+                        }
+                    } else {
+                        // When not rolling, use full redistribution logic (same as balls)
+                        const newCount = currentCount + 1;
+
+                        console.log(`Collecting ball with flag: ${flyingBall.flagType}. Current count: ${currentCount}, new count: ${newCount}`);
+                        console.log(`Before collection, slots:`, [...this.cannonballSlots]);
+                        console.log(`Before collection, flags:`, [...this.cannonballSlotFlags]);
+
+                        // Step 1: Collect existing flags in their current order
+                        const existingFlags = [];
+                        for (let i = 0; i < 4; i++) {
+                            if (this.cannonballSlots[i]) {
+                                existingFlags.push(this.cannonballSlotFlags[i]);
+                            }
+                        }
+
+                        // Step 2: Add new flag at the end (it will go rightmost)
+                        existingFlags.push(flyingBall.flagType);
+
+                        // Step 3: Clear all and redistribute (SAME as balls)
+                        const newSlots = [false, false, false, false];
+                        const newFlags = [null, null, null, null];
+
+                        for (let i = 0; i < newCount; i++) {
+                            newSlots[3 - i] = true; // Fill rightmost slots first: 3, 2, 1, 0
+                            newFlags[3 - i] = existingFlags[i]; // Assign flags in same order as balls
+                        }
+
+                        // The newly collected ball will be at the leftmost of the filled slots
+                        const newBallSlot = 4 - newCount;
+
+                        this.cannonballSlots = newSlots;
+                        this.cannonballSlotFlags = newFlags;
+                        this.updateCannonballUI();
+
+                        // Apply gold tint to the newly collected ball
+                        const newBall = this.cannonballUI[newBallSlot];
+                        newBall.setTint(0xFFD700);
+
+                        this.tweens.add({
+                            targets: newBall,
+                            tint: 0xffffff,
+                            duration: this.CANNON_COOLDOWN_TIME,
+                            ease: 'Power2.easeOut'
+                        });
+
+                        console.log(`After collection, slots:`, newSlots);
+                        console.log(`After collection, flags:`, newFlags);
                     }
 
-                    // The newly collected ball will be at the leftmost of the filled slots
-                    const newBallSlot = 4 - newCount; // 3 for 1 ball, 2 for 2 balls, 1 for 3 balls, 0 for 4 balls
-
-                    this.cannonballSlots = newSlots;
-                    this.updateCannonballUI();
-
-                    // Apply gold tint to the newly collected ball and animate to normal white
-                    const newBall = this.cannonballUI[newBallSlot];
-                    newBall.setTint(0xFFD700); // Gold tint (same as cooldown circle)
-
-                    // Animate back to normal white over cooldown time
-                    this.tweens.add({
-                        targets: newBall,
-                        tint: 0xffffff, // Back to normal white
-                        duration: this.CANNON_COOLDOWN_TIME,
-                        ease: 'Power2.easeOut'
-                    });
-
-                    console.log(`After collection, slots:`, newSlots, `New ball in slot ${newBallSlot} with light tint`);
+                    // Update quest progress for any flag collected
+                    this.updateQuestProgress(flyingBall.flagType);
 
                     // Destroy all components
                     if (flyingBall.leftWing) flyingBall.leftWing.destroy();
@@ -975,19 +1141,22 @@
                     if (flyingBall.flag) flyingBall.flag.destroy();
                     flyingBall.destroy();
 
-                    console.log(`Collected ball! New total: ${newCount}, all balls settled rightward`);
+                    console.log(`Collected ball! Total: ${this.getTotalCannonballs()}, Rolling: ${this.isRollingCannonballs}`);
                 }
             }
 
             updateCannonballUI() {
-                // Gray placeholders are always visible, just update the actual cannonballs
+                // Gray placeholders are always visible, just update the actual cannonballs and flags
                 for (let i = 0; i < 4; i++) {
                     const ball = this.cannonballUI[i];
+                    const flag = this.cannonballUIFlags[i];
 
-                    // Ensure ball is at correct position (unless currently animating)
+                    // Ensure ball and flag are at correct position (unless currently animating)
                     if (!this.isRollingCannonballs) {
                         ball.x = this.cannonballSlotPositions[i];
                         ball.rotation = 0; // Reset rotation when not rolling
+                        flag.x = this.cannonballSlotPositions[i];
+                        flag.rotation = 0; // Reset flag rotation too
                     }
 
                     // Show/hide actual cannonball based on slot state
@@ -996,9 +1165,18 @@
                         ball.setVisible(true);
                         ball.setTint(0xffffff);
                         ball.setAlpha(1.0);
+
+                        // Show flag if this slot has one
+                        if (this.cannonballSlotFlags[i]) {
+                            flag.setTexture(this.cannonballSlotFlags[i]);
+                            flag.setVisible(true);
+                        } else {
+                            flag.setVisible(false);
+                        }
                     } else {
-                        // Slot is empty - hide the white cannonball, gray placeholder shows through
+                        // Slot is empty - hide the white cannonball and flag, gray placeholder shows through
                         ball.setVisible(false);
+                        flag.setVisible(false);
                     }
                 }
 
@@ -1007,6 +1185,7 @@
 
             updateCooldownCircles() {
                 const canFire = !this.cannonCharging && !this.cannonOnCooldown && !this.isRollingCannonballs && this.hasCannonballInRightmostSlot();
+                const isSuperShot = this.isSuperShotReady();
 
                 // Only show cooldown circle on rightmost slot (index 3)
                 for (let i = 0; i < 4; i++) {
@@ -1017,11 +1196,19 @@
                     if (i === 3 && this.cannonballSlots[i]) {
                         const x = this.cannonballSlotPositions[i];
                         const y = 1500;
-                        const radius = this.CANNONBALL_SIZE + 4;
+                        let radius = this.CANNONBALL_SIZE + 4;
+
+                        // Super Shot pulsing effect!
+                        if (canFire && isSuperShot) {
+                            const pulseTime = this.time.now * 0.008; // Pulse frequency
+                            const pulseScale = 1 + Math.sin(pulseTime) * 0.2; // Scale from 1.0 to 1.2
+                            radius *= pulseScale;
+                        }
 
                         if (canFire) {
                             // Full golden circle when ready to fire
-                            cooldownGraphic.lineStyle(4, 0xFFD700);
+                            const lineWidth = (canFire && isSuperShot) ? 6 : 4; // Thicker line for Super Shot
+                            cooldownGraphic.lineStyle(lineWidth, 0xFFD700);
                             cooldownGraphic.strokeCircle(x, y, radius);
                         } else if (this.cannonOnCooldown) {
                             // Show cooldown progress
@@ -1138,7 +1325,6 @@
                 this.showTitleScreen();
 
                 this.titleText.setText('GAME OVER');
-                this.playButtonText.setText('PLAY AGAIN');
 
                 const scoreText = this.add.text(450, 650, `Max Height: ${this.maxHeight}m`, {
                     fontSize: '48px',
@@ -1151,8 +1337,7 @@
                 this.playButton.removeAllListeners();
                 this.playButton.on('pointerdown', () => {
                     scoreText.destroy();
-                    this.titleText.setText('VERTICAL\nLAUNCHER');
-                    this.playButtonText.setText('PLAY GAME');
+                    this.titleText.setText('AESOPNE');
                     this.restartGame();
                 });
             }
@@ -1170,6 +1355,16 @@
 
                 this.cannonOnCooldown = false;
                 this.cannonCooldownStart = 0;
+
+                // Reset slot flags
+                this.cannonballSlotFlags = [null, null, null, null];
+
+                // Reset Super Shot quest system
+                this.superShotReady = true;
+                this.questTargetFlag = null;
+                this.questTargetCount = 4;
+                this.questCurrentCount = 0;
+                this.questLevel = 1;
 
                 if (this.chargeTimer) {
                     this.chargeTimer.destroy();
