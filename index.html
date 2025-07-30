@@ -94,6 +94,8 @@
                 this.load.image('cannon', 'assets/cannon.png');
                 this.load.image('cloud_1', 'assets/cloud_1.png');
                 this.load.image('cloud_2', 'assets/cloud_2.png');
+                this.load.image('button_help', 'assets/button_help.png');
+                this.load.image('button_destruct', 'assets/button_destruct.png');
             }
 
             create() {
@@ -181,6 +183,14 @@
                     this.cooldownGraphics.push(cooldownGraphic);
                 }
 
+                // Create help button - symmetric with leftmost cannonball
+                this.helpButton = this.add.image(810, 1500, 'button_help'); // 810 = 450 + (450-90)
+                this.helpButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                this.helpButton.setScrollFactor(0);
+                this.helpButton.setDepth(1000);
+                this.helpButton.setInteractive();
+                this.helpButton.on('pointerdown', () => this.showHelpPopup());
+
                 // Initialize cloud system
                 this.initializeCloudSystem();
 
@@ -191,7 +201,8 @@
 
                 this.uiElements = [
                     this.topUI, this.bottomUI, this.heightText,
-                    this.personalBestText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cooldownGraphics
+                    this.personalBestText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cooldownGraphics,
+                    this.helpButton
                 ];
 
                 // Create title screen
@@ -430,6 +441,135 @@
 
             hasCannonballInRightmostSlot() {
                 return this.cannonballSlots[3]; // Rightmost slot is index 3
+            }
+
+            showHelpPopup() {
+                if (this.gameState !== 'playing') return;
+
+                console.log('Showing help popup - pausing all game logic');
+
+                // Set help state and pause physics
+                this.gameState = 'help';
+
+                // Pause physics world to stop all movement
+                this.physics.world.pause();
+
+                // Store and pause all tweens
+                this.tweens.pauseAll();
+
+                // Create help popup background - 2:3 ratio
+                this.helpPopupBG = this.add.rectangle(450, 800, 720, 1180, 0x2c3e50);
+                this.helpPopupBG.setScrollFactor(0);
+                this.helpPopupBG.setDepth(2000);
+                this.helpPopupBG.setStrokeStyle(4, 0xffffff);
+                this.helpPopupBG.setInteractive();
+
+                // Create help title - bigger and better positioned
+                this.helpTitle = this.add.text(450, 350, 'HOW TO PLAY', {
+                    fontSize: '56px',
+                    fill: '#ffffff',
+                    fontWeight: 'bold',
+                    align: 'center'
+                }).setOrigin(0.5);
+                this.helpTitle.setScrollFactor(0);
+                this.helpTitle.setDepth(2001);
+
+                // Create help text - left aligned and vertically centered
+                const helpText = `• tap to shoot in that direction
+
+• firing your cannon propels you
+  in the opposite direction
+
+• collect flying cannonballs
+  for more ammo
+
+• go as high as possible!
+
+• do NOT press the selfdestruct button`;
+
+                this.helpContent = this.add.text(450, 700, helpText, {
+                    fontSize: '28px',
+                    fill: '#ecf0f1',
+                    align: 'left',
+                    lineSpacing: 8,
+                    wordWrap: { width: 620 }
+                }).setOrigin(0.5);
+                this.helpContent.setScrollFactor(0);
+                this.helpContent.setDepth(2001);
+
+                // Create self-destruct button - better positioned
+                this.destructButton = this.add.image(450, 1050, 'button_destruct');
+                this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                this.destructButton.setScrollFactor(0);
+                this.destructButton.setDepth(2002); // Higher depth to ensure it's on top
+                this.destructButton.setInteractive();
+                this.destructButton.on('pointerdown', (pointer, localX, localY, event) => {
+                    console.log('Self-destruct activated!');
+                    event.stopPropagation(); // Prevent background click
+                    this.hideHelpPopup();
+                    this.gameOver();
+                });
+
+                // Store help popup elements
+                this.helpPopupElements = [
+                    this.helpPopupBG,
+                    this.helpTitle,
+                    this.helpContent,
+                    this.destructButton
+                ];
+
+                // Click background to close
+                this.helpPopupBG.on('pointerdown', () => {
+                    console.log('Clicked inside popup - closing help');
+                    this.hideHelpPopup();
+                });
+
+                // Add outside click handler with a delay to avoid immediate closure
+                this.time.delayedCall(100, () => {
+                    this.helpOutsideClickHandler = (pointer) => {
+                        // Calculate popup bounds
+                        const popupLeft = 450 - 360; // 450 - (720/2)
+                        const popupRight = 450 + 360; // 450 + (720/2)
+                        const popupTop = 800 - 590; // 800 - (1180/2)
+                        const popupBottom = 800 + 590; // 800 + (1180/2)
+
+                        // Check if click is outside popup bounds
+                        if (pointer.x < popupLeft || pointer.x > popupRight ||
+                            pointer.y < popupTop || pointer.y > popupBottom) {
+                            console.log('Clicked outside popup - closing help');
+                            this.hideHelpPopup();
+                        }
+                    };
+
+                    this.input.on('pointerdown', this.helpOutsideClickHandler);
+                });
+            }
+
+            hideHelpPopup() {
+                console.log('Hiding help popup - resuming all game logic');
+
+                // Remove outside click handler
+                if (this.helpOutsideClickHandler) {
+                    this.input.off('pointerdown', this.helpOutsideClickHandler);
+                    this.helpOutsideClickHandler = null;
+                }
+
+                // Destroy popup elements
+                if (this.helpPopupElements) {
+                    this.helpPopupElements.forEach(element => {
+                        if (element && element.destroy) {
+                            element.destroy();
+                        }
+                    });
+                    this.helpPopupElements = null;
+                }
+
+                // Resume physics and tweens
+                this.physics.world.resume();
+                this.tweens.resumeAll();
+
+                // Resume the game
+                this.gameState = 'playing';
             }
 
             getTotalCannonballs() {
