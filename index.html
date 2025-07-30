@@ -794,10 +794,25 @@
                         newSlots[3 - i] = true; // Fill rightmost slots first: 3, 2, 1, 0
                     }
 
+                    // The newly collected ball will be at the leftmost of the filled slots
+                    const newBallSlot = 4 - newCount; // 3 for 1 ball, 2 for 2 balls, 1 for 3 balls, 0 for 4 balls
+
                     this.cannonballSlots = newSlots;
                     this.updateCannonballUI();
 
-                    console.log(`After collection, slots:`, newSlots);
+                    // Apply gold tint to the newly collected ball and animate to normal white
+                    const newBall = this.cannonballUI[newBallSlot];
+                    newBall.setTint(0xFFD700); // Gold tint (same as cooldown circle)
+
+                    // Animate back to normal white over cooldown time
+                    this.tweens.add({
+                        targets: newBall,
+                        tint: 0xffffff, // Back to normal white
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+
+                    console.log(`After collection, slots:`, newSlots, `New ball in slot ${newBallSlot} with light tint`);
 
                     if (flyingBall.leftWing) flyingBall.leftWing.destroy();
                     if (flyingBall.rightWing) flyingBall.rightWing.destroy();
