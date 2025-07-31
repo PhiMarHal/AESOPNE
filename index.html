@@ -140,8 +140,7 @@
                 this.load.audio('ball_pickup', 'assets/ball_pickup.mp3');
                 this.load.audio('tap_button', 'assets/tap_button.mp3');
 
-                // Load music
-                this.load.audio('aesopne_music', 'assets/aesopne.mp3');
+                // Note: Music will be loaded later during title screen
             }
 
             create() {
@@ -370,9 +369,54 @@
                 this.physics.add.overlap(this.ship, this.flyingBalls, this.collectFlyingBall, null, this);
 
                 // Create music system
-                this.music = this.sound.add('aesopne_music', { loop: true, volume: 0.7 });
+                this.music = null; // Will be created after async loading
 
                 console.log('Game created successfully');
+            }
+
+            loadMusicAsync() {
+                if (this.music) {
+                    return; // Already loaded
+                }
+
+                console.log('🎵 Starting async music load...');
+
+                // Create a loader for just the music
+                const loader = new Phaser.Loader.LoaderPlugin(this);
+
+                // Load the music
+                loader.audio('aesopne_music', 'assets/aesopne.mp3');
+
+                // Handle completion
+                loader.once('complete', () => {
+                    console.log('🎵 Music loading complete!');
+
+                    // Add to sound manager and store reference
+                    this.music = this.sound.add('aesopne_music', { loop: true, volume: 0.7 });
+
+                    // If the game has already started and we haven't started music yet, start it now
+                    if (this.gameState === 'playing' && !this.musicStarted && this.ship.body.allowGravity) {
+                        this.music.play();
+                        this.musicStarted = true;
+                        this.isAscending = true;
+                        this.wasAscending = true;
+                        console.log('🎵 Music started (late load) - player is ascending!');
+
+                        // Set up the filter chain
+                        this.time.delayedCall(200, () => this.setupMusicFilter());
+                    }
+
+                    console.log('🎵 Music ready for playback');
+                });
+
+                // Handle errors
+                loader.once('loaderror', (fileObj) => {
+                    console.error('❌ Error loading music:', fileObj);
+                    // Game will still work without music
+                });
+
+                // Start loading
+                loader.start();
             }
 
             setupMusicFilter() {
@@ -436,8 +480,13 @@
             }
 
             checkAndRepairMusicFilter() {
+                // Early return if music not available
+                if (!this.music || !this.originalMusicSource) {
+                    return false;
+                }
+
                 // Check if the music source has changed (happens when looping)
-                if (this.originalMusicSource && this.music.source !== this.originalMusicSource) {
+                if (this.music.source !== this.originalMusicSource) {
                     console.log('🔄 Music source changed (probably looped) - re-establishing filter chain');
                     const wasFilterActive = this.isFilterActive;
                     this.filterSetupComplete = false;
@@ -984,6 +1033,9 @@
 
                 // START animation: starts after 0.5s (when AESOPNE finishes)
                 this.time.delayedCall(500, () => {
+                    // Start loading music async during the START button animation
+                    this.loadMusicAsync();
+
                     this.tweens.add({
                         targets: this.playButton,
                         y: 1120, // 70% of screen
@@ -1263,8 +1315,8 @@
 
                 this.ship.setVelocity(velocityX, velocityY);
 
-                // Start music on first shot
-                if (!this.musicStarted) {
+                // Start music on first shot (if loaded)
+                if (!this.musicStarted && this.music) {
                     this.music.play();
                     this.musicStarted = true;
                     this.isAscending = true;
@@ -1273,6 +1325,8 @@
 
                     // Set up the filter chain after a brief delay to ensure music is playing
                     this.time.delayedCall(200, () => this.setupMusicFilter());
+                } else if (!this.musicStarted && !this.music) {
+                    console.log('🎵 Music not loaded yet - will start when available');
                 }
 
                 // STEP 4: Now animate the visual rolling on top of the correct final state
@@ -1888,7 +1942,7 @@
                 }
 
                 // Update music filter based on ascending state
-                if (this.musicStarted && this.ship.body.allowGravity && this.filterSetupComplete) {
+                if (this.musicStarted && this.music && this.ship.body.allowGravity && this.filterSetupComplete) {
                     // Player is ascending if Y velocity is negative (up is negative in Phaser)
                     this.isAscending = this.ship.body.velocity.y < -50; // Small threshold to avoid micro-movements
 
