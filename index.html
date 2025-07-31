@@ -124,9 +124,9 @@
                 this.titleElements = [];
 
                 // Create infinite background
-                this.gameBackground = this.add.rectangle(0, this.SEA_LEVEL - 250000, 200000, 500000, 0x87CEEB);
-                this.seaFloor = this.add.rectangle(0, this.SEA_LEVEL + 800, 200000, 1600, 0x2c5f7b);
-                this.sea = this.add.rectangle(0, this.SEA_LEVEL, 50000, 400, 0x3498db);
+                this.gameBackground = this.add.rectangle(0, this.SEA_LEVEL - 2500000, 2000000, 5000000, 0x87CEEB);
+                this.seaFloor = this.add.rectangle(0, this.SEA_LEVEL + 800, 2000000, 1600, 0x2c5f7b);
+                this.sea = this.add.rectangle(0, this.SEA_LEVEL, 500000, 400, 0x3498db);
 
                 // Create UI areas - fixed to camera
                 this.topUI = this.add.rectangle(450, 100, 900, 200, 0x34495e);
@@ -491,7 +491,7 @@
                 this.questTargetFlag = Phaser.Utils.Array.GetRandom(flagTypes);
 
                 // Calculate target count: 4, 8, 16, 32, etc.
-                this.questTargetCount = 4 * Math.pow(2, this.questLevel - 1);
+                this.questTargetCount = 4; //* Math.pow(2, this.questLevel - 1);
                 this.questCurrentCount = 0;
 
                 console.log(`🎯 NEW QUEST: Collect ${this.questTargetCount} ${this.questTargetFlag} flags (Quest Level ${this.questLevel})`);
@@ -587,8 +587,11 @@
 • firing your cannon propels you
   in the opposite direction
 
-• collect flying cannonballs
+• grab flying cannonballs
   for more ammo
+
+• collect the quest targets
+  for a Super Shot
 
 • go as high as possible!
 
