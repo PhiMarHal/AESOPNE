@@ -118,6 +118,7 @@
                 this.load.image('flag_bayc', 'assets/flag_bayc.png');
                 this.load.image('flag_noun', 'assets/flag_noun.png');
                 this.load.image('flag_doodle', 'assets/flag_doodle.png');
+                this.load.image('title_aesopne', 'assets/title_aesopne.png');
             }
 
             create() {
@@ -271,27 +272,35 @@
                 this.titleBG.setScrollFactor(0);
                 this.titleBG.setDepth(2000);
 
-                this.titleText = this.add.text(450, 500, 'AESOPNE', {
-                    fontSize: '72px',
-                    fill: '#ffffff',
-                    fontWeight: 'bold',
-                    align: 'center'
-                }).setOrigin(0.5);
-                this.titleText.setScrollFactor(0);
-                this.titleText.setDepth(2001);
+                // Replace text with image - set to user's preferred size
+                this.titleImage = this.add.image(450, -100, 'title_aesopne'); // Start above screen for physics animation
+                this.titleImage.setDisplaySize(600, 300);
+                this.titleImage.setOrigin(0.5);
+                this.titleImage.setScrollFactor(0);
+                this.titleImage.setDepth(2001);
 
-                this.playButton = this.add.image(450, 800, 'button_start');
-                this.playButton.setDisplaySize(360, 180); // 2:1 ratio for the sprite
+                this.playButton = this.add.image(450, -200, 'button_start'); // Start above screen for physics animation
+                this.playButton.setDisplaySize(432, 216); // 20% bigger (was 360x180)
                 this.playButton.setScrollFactor(0);
                 this.playButton.setDepth(2001);
 
-                this.titleElements = [this.titleBG, this.titleText, this.playButton];
+                // Create invisible physics floors for bouncing animation - updated positions
+                this.titleFloor = this.add.rectangle(450, 480, 900, 50, 0x000000); // 30% of screen (480px)
+                this.titleFloor.setScrollFactor(0);
+                this.titleFloor.setDepth(1999);
+                this.titleFloor.setVisible(false);
+
+                this.buttonFloor = this.add.rectangle(450, 1120, 900, 50, 0x000000); // 70% of screen (1120px)
+                this.buttonFloor.setScrollFactor(0);
+                this.buttonFloor.setDepth(1999);
+                this.buttonFloor.setVisible(false);
+
+                this.titleElements = [this.titleBG, this.titleImage, this.playButton, this.titleFloor, this.buttonFloor];
 
                 // Start with title screen
                 this.showTitleScreen();
 
-                // Set up interactions
-                this.playButton.setInteractive();
+                // Set up interactions - but don't make interactive yet (physics animation will handle this)
                 this.playButton.on('pointerdown', () => {
                     console.log('Play button clicked');
                     this.startGame();
@@ -743,9 +752,78 @@
                 this.clouds.forEach(cloud => cloud.setVisible(false));
                 this.titleElements.forEach(element => element.setVisible(true));
                 this.gameState = 'menu';
+
+                // Reset positions for animation
+                this.titleImage.setPosition(450, -150);
+                this.playButton.setPosition(450, -200);
+
+                // Remove button interactivity during animation
+                this.playButton.disableInteractive();
+
+                // AESOPNE animation: sharp 0.2s drop, 0.2s bounce, 0.1s settle
+                this.tweens.add({
+                    targets: this.titleImage,
+                    y: 480, // 30% of screen
+                    duration: 200, // 0.2s drop
+                    ease: 'Power2.easeIn',
+                    onComplete: () => {
+                        // Bounce up
+                        this.tweens.add({
+                            targets: this.titleImage,
+                            y: 420, // Bounce up 60px
+                            duration: 100, // 0.1s up
+                            ease: 'Power2.easeOut',
+                            onComplete: () => {
+                                // Settle down
+                                this.tweens.add({
+                                    targets: this.titleImage,
+                                    y: 480, // Back to final position
+                                    duration: 100, // 0.1s settle
+                                    ease: 'Power2.easeIn'
+                                });
+                            }
+                        });
+                    }
+                });
+
+                // START animation: starts after 0.5s (when AESOPNE finishes)
+                this.time.delayedCall(500, () => {
+                    this.tweens.add({
+                        targets: this.playButton,
+                        y: 1120, // 70% of screen
+                        duration: 200, // 0.2s drop
+                        ease: 'Power2.easeIn',
+                        onComplete: () => {
+                            // Bounce up
+                            this.tweens.add({
+                                targets: this.playButton,
+                                y: 1060, // Bounce up 60px
+                                duration: 100, // 0.1s up
+                                ease: 'Power2.easeOut',
+                                onComplete: () => {
+                                    // Settle down
+                                    this.tweens.add({
+                                        targets: this.playButton,
+                                        y: 1120, // Back to final position
+                                        duration: 100, // 0.1s settle
+                                        ease: 'Power2.easeIn'
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+
+                // Enable button interaction after 1 second total
+                this.time.delayedCall(1000, () => {
+                    if (this.playButton && this.gameState === 'menu') {
+                        this.playButton.setInteractive();
+                    }
+                });
             }
 
             showGameScreen() {
+                // No physics bodies to clean up since we're using tweens now
                 this.titleElements.forEach(element => element.setVisible(false));
                 this.gameElements.forEach(element => element.setVisible(true));
                 this.backgroundRects.forEach(rect => rect.setVisible(true));
@@ -1414,22 +1492,63 @@
                 this.cameras.main.stopFollow();
                 this.cameras.main.setScroll(0, this.SEA_LEVEL - 1025); // Show more sky (was -800)
 
-                this.showTitleScreen();
+                // Show title elements without animation
+                this.gameElements.forEach(element => element.setVisible(false));
+                this.backgroundRects.forEach(rect => rect.setVisible(false));
+                this.uiElements.forEach(element => element.setVisible(false));
+                this.clouds.forEach(cloud => cloud.setVisible(false));
+                this.titleElements.forEach(element => element.setVisible(true));
+                this.gameState = 'gameOver';
 
-                this.titleText.setText('GAME OVER');
+                // Position AESOPNE image higher up for better spacing
+                this.titleImage.setPosition(450, 300);
+                this.titleImage.setVisible(true);
 
-                const scoreText = this.add.text(450, 650, `Max Height: ${this.maxHeight}m`, {
-                    fontSize: '48px',
+                // Create "It's over..." text with better spacing - 30% bigger
+                this.gameOverText = this.add.text(450, 520, "It's over...", {
+                    fontSize: '64px',
                     fill: '#e74c3c',
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    align: 'center'
                 }).setOrigin(0.5);
-                scoreText.setScrollFactor(0);
-                scoreText.setDepth(2001);
+                this.gameOverText.setScrollFactor(0);
+                this.gameOverText.setDepth(2001);
+
+                // Create height text with more spacing - 40% bigger
+                const heightText = this.add.text(450, 640, `You went ${this.maxHeight}m high.`, {
+                    fontSize: '50px',
+                    fill: '#ffffff',
+                    fontWeight: 'normal',
+                    align: 'center'
+                }).setOrigin(0.5);
+                heightText.setScrollFactor(0);
+                heightText.setDepth(2001);
+
+                // Calculate distance to moon and create moon text with better spacing - 40% bigger
+                const moonDistance = 384400000; // Distance to moon in meters
+                const remaining = moonDistance - this.maxHeight;
+                const moonText = this.add.text(450, 760, `The Moon is ${remaining.toLocaleString()}m away. 
+                Keep going!`, {
+                    fontSize: '40px',
+                    fill: '#ecf0f1',
+                    fontWeight: 'normal',
+                    align: 'center'
+                }).setOrigin(0.5);
+                moonText.setScrollFactor(0);
+                moonText.setDepth(2001);
+
+                // Position play button at settled position and make it interactive
+                this.playButton.setPosition(450, 1120); // 70% of screen
+                this.playButton.setInteractive();
 
                 this.playButton.removeAllListeners();
                 this.playButton.on('pointerdown', () => {
-                    scoreText.destroy();
-                    this.titleText.setText('AESOPNE');
+                    heightText.destroy();
+                    moonText.destroy();
+                    if (this.gameOverText) {
+                        this.gameOverText.destroy();
+                        this.gameOverText = null;
+                    }
                     this.restartGame();
                 });
             }
@@ -1479,7 +1598,8 @@
                 this.flyingBalls.clear(true, true);
                 this.cannonballProjectiles.clear(true, true);
 
-                this.startGame();
+                // Go back to animated title screen instead of directly starting game
+                this.showTitleScreen();
             }
 
             update(time, delta) {
