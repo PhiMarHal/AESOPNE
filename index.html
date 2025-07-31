@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Vertical Launcher</title>
+    <title>AESOPNE</title>
+    <link rel="icon" type="image/png" href="assets/ship.png">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
     <style>
         body {
@@ -116,29 +117,31 @@
             }
 
             preload() {
-                // Load sprite assets
-                this.load.image('cannonball', 'assets/cannonball.png');
-                this.load.image('wing', 'assets/wing.png');
-                this.load.image('ship', 'assets/ship.png');
-                this.load.image('cannon', 'assets/cannon.png');
-                this.load.image('cloud_1', 'assets/cloud_1.png');
-                this.load.image('cloud_2', 'assets/cloud_2.png');
-                this.load.image('button_help', 'assets/button_help.png');
-                this.load.image('button_destruct', 'assets/button_destruct.png');
-                this.load.image('button_start', 'assets/button_start.png');
-                this.load.image('flag_milady', 'assets/flag_milady.png');
-                this.load.image('flag_bayc', 'assets/flag_bayc.png');
-                this.load.image('flag_noun', 'assets/flag_noun.png');
-                this.load.image('flag_doodle', 'assets/flag_doodle.png');
-                this.load.image('title_aesopne', 'assets/title_aesopne.png');
+                const ASSET_BASE = 'https://aesopnestuff.loiyaa.com/';
 
-                // Load sound assets
-                this.load.audio('rolling_ball', 'assets/rolling_ball.mp3');
-                this.load.audio('cannon_shot', 'assets/cannon_shot.mp3');
-                this.load.audio('super_shot', 'assets/super_shot.mp3');
-                this.load.audio('water_splash', 'assets/water_splash.mp3');
-                this.load.audio('ball_pickup', 'assets/ball_pickup.mp3');
-                this.load.audio('tap_button', 'assets/tap_button.mp3');
+                // Sprites
+                this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
+                this.load.image('wing', ASSET_BASE + '/assets/wing.png');
+                this.load.image('ship', ASSET_BASE + '/assets/ship.png');
+                this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
+                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
+                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2.png');
+                this.load.image('button_help', ASSET_BASE + '/assets/button_help.png');
+                this.load.image('button_destruct', ASSET_BASE + '/assets/button_destruct.png');
+                this.load.image('button_start', ASSET_BASE + '/assets/button_start.png');
+                this.load.image('flag_milady', ASSET_BASE + '/assets/flag_milady.png');
+                this.load.image('flag_bayc', ASSET_BASE + '/assets/flag_bayc.png');
+                this.load.image('flag_noun', ASSET_BASE + '/assets/flag_noun.png');
+                this.load.image('flag_doodle', ASSET_BASE + '/assets/flag_doodle.png');
+                this.load.image('title_aesopne', ASSET_BASE + '/assets/title_aesopne.png');
+
+                // Sounds
+                this.load.audio('rolling_ball', ASSET_BASE + '/assets/rolling_ball.mp3');
+                this.load.audio('cannon_shot', ASSET_BASE + '/assets/cannon_shot.mp3');
+                this.load.audio('super_shot', ASSET_BASE + '/assets/super_shot.mp3');
+                this.load.audio('water_splash', ASSET_BASE + '/assets/water_splash.mp3');
+                this.load.audio('ball_pickup', ASSET_BASE + '/assets/ball_pickup.mp3');
+                this.load.audio('tap_button', ASSET_BASE + '/assets/tap_button.mp3');
 
                 // Note: Music will be loaded later during title screen
             }
@@ -385,7 +388,7 @@
                 const loader = new Phaser.Loader.LoaderPlugin(this);
 
                 // Load the music
-                loader.audio('aesopne_music', 'assets/aesopne.mp3');
+                loader.audio('aesopne_music', 'https://aesopnestuff.loiyaa.com/assets/aesopne.mp3');
 
                 // Handle completion
                 loader.once('complete', () => {
