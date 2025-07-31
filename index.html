@@ -119,10 +119,14 @@
             preload() {
                 const ASSET_BASE = 'https://aesopnestuff.loiyaa.com';
 
+                // Set background to match title screen
+                this.cameras.main.setBackgroundColor(0x2c3e50);
+
                 // Sprites
+                this.load.image('ship', ASSET_BASE + '/assets/ship.png');
                 this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
                 this.load.image('wing', ASSET_BASE + '/assets/wing.png');
-                this.load.image('ship', ASSET_BASE + '/assets/ship.png');
+
                 this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
                 this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
                 this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2.png');
