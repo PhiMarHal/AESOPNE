@@ -109,6 +109,8 @@
                 this.directGainNode = null;
                 this.isFilterActive = false;
                 this.filterSetupComplete = false;
+                this.originalMusicSource = null;
+                this.originalMusicSource = null; // Track the original source
 
                 console.log('Vertical Launcher initialized with slot-based cannonball system');
             }
@@ -385,6 +387,9 @@
                         return;
                     }
 
+                    // Store reference to the current music source
+                    this.originalMusicSource = this.music.source;
+
                     // Create the filter chain once and keep it
                     this.lowPassFilter = audioContext.createBiquadFilter();
                     this.lowPassFilter.type = 'lowpass';
@@ -430,11 +435,37 @@
                 }
             }
 
+            checkAndRepairMusicFilter() {
+                // Check if the music source has changed (happens when looping)
+                if (this.originalMusicSource && this.music.source !== this.originalMusicSource) {
+                    console.log('🔄 Music source changed (probably looped) - re-establishing filter chain');
+                    const wasFilterActive = this.isFilterActive;
+                    this.filterSetupComplete = false;
+                    this.setupMusicFilter();
+
+                    // Restore the previous filter state
+                    if (wasFilterActive && this.filterSetupComplete) {
+                        // Re-apply the muted state immediately (no smooth transition needed)
+                        this.directGainNode.gain.value = 0.0;
+                        this.filterGainNode.gain.value = 0.8;
+                        console.log('🔇 Restored muted filter state after source change');
+                    }
+                    return true; // Indicates we repaired the filter
+                }
+                return false; // No repair needed
+            }
+
             applyLowPassFilter() {
                 if (!this.filterSetupComplete) {
                     this.setupMusicFilter();
                     // Wait a moment for setup to complete, then try again
                     this.time.delayedCall(100, () => this.applyLowPassFilter());
+                    return;
+                }
+
+                // Check if music source changed (loop detection)
+                if (this.checkAndRepairMusicFilter()) {
+                    // Filter was repaired and state restored, we're done
                     return;
                 }
 
@@ -466,6 +497,16 @@
 
             removeLowPassFilter() {
                 if (!this.isFilterActive || !this.directGainNode || !this.filterGainNode) {
+                    return;
+                }
+
+                // Check if music source changed (loop detection)
+                if (this.checkAndRepairMusicFilter()) {
+                    // Filter was repaired, but we want clear audio, so fix the state
+                    this.directGainNode.gain.value = 1.0;
+                    this.filterGainNode.gain.value = 0.0;
+                    this.isFilterActive = false;
+                    console.log('🔊 Restored clear audio after source change');
                     return;
                 }
 
@@ -828,6 +869,13 @@
                     this.sound.play('tap_button');
                     event.stopPropagation();
                     this.hideHelpPopup();
+
+                    // Play explosion sound 1 second after clicking
+                    this.time.delayedCall(1000, () => {
+                        this.sound.play('super_shot');
+                        console.log('💥 Self-destruct explosion!');
+                    });
+
                     this.gameOver(false); // Don't play water splash for self-destruct
                 });
 
@@ -1029,6 +1077,7 @@
                 }
                 this.removeLowPassFilter(); // Clean up any active filter
                 this.filterSetupComplete = false; // Reset filter setup
+                this.originalMusicSource = null; // Reset source tracking
                 this.musicStarted = false;
                 this.isAscending = false;
                 this.wasAscending = false;
@@ -1653,6 +1702,7 @@
                 }
                 this.removeLowPassFilter(); // Clean up any active filter
                 this.filterSetupComplete = false; // Reset filter setup
+                this.originalMusicSource = null; // Reset source tracking
 
                 // Play water splash sound only if falling back to water (not self-destruct)
                 if (playWaterSplash) {
