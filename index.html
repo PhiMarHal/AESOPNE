@@ -119,6 +119,14 @@
                 this.load.image('flag_noun', 'assets/flag_noun.png');
                 this.load.image('flag_doodle', 'assets/flag_doodle.png');
                 this.load.image('title_aesopne', 'assets/title_aesopne.png');
+
+                // Load sound assets
+                this.load.audio('rolling_ball', 'assets/rolling_ball.mp3');
+                this.load.audio('cannon_shot', 'assets/cannon_shot.mp3');
+                this.load.audio('super_shot', 'assets/super_shot.mp3');
+                this.load.audio('water_splash', 'assets/water_splash.mp3');
+                this.load.audio('ball_pickup', 'assets/ball_pickup.mp3');
+                this.load.audio('tap_button', 'assets/tap_button.mp3');
             }
 
             create() {
@@ -251,7 +259,10 @@
                 this.helpButton.setScrollFactor(0);
                 this.helpButton.setDepth(1000);
                 this.helpButton.setInteractive();
-                this.helpButton.on('pointerdown', () => this.showHelpPopup());
+                this.helpButton.on('pointerdown', () => {
+                    this.sound.play('tap_button');
+                    this.showHelpPopup();
+                });
 
                 // Initialize cloud system
                 this.initializeCloudSystem();
@@ -303,6 +314,7 @@
                 // Set up interactions - but don't make interactive yet (physics animation will handle this)
                 this.playButton.on('pointerdown', () => {
                     console.log('Play button clicked');
+                    this.sound.play('tap_button');
                     this.startGame();
                 });
 
@@ -636,7 +648,7 @@
 
                 // Create help title - bigger and better positioned
                 this.helpTitle = this.add.text(450, 350, 'HOW TO PLAY', {
-                    fontSize: '56px',
+                    fontSize: '64px',
                     fill: '#ffffff',
                     fontWeight: 'bold',
                     align: 'center'
@@ -658,7 +670,8 @@
 
 • go as high as possible!
 
-• do NOT press the selfdestruct button`;
+• do NOT press the selfdestruct 
+  button`;
 
                 this.helpContent = this.add.text(450, 700, helpText, {
                     fontSize: '28px',
@@ -678,9 +691,10 @@
                 this.destructButton.setInteractive();
                 this.destructButton.on('pointerdown', (pointer, localX, localY, event) => {
                     console.log('Self-destruct activated!');
+                    this.sound.play('tap_button');
                     event.stopPropagation();
                     this.hideHelpPopup();
-                    this.gameOver();
+                    this.gameOver(false); // Don't play water splash for self-destruct
                 });
 
                 // Store help popup elements
@@ -940,6 +954,7 @@
                 }
 
                 console.log(`Starting cannon charge... Will fire in ${this.CANNON_CHARGE_TIME}ms`);
+                this.sound.play('rolling_ball');
                 this.cannonCharging = true;
                 this.cannonChargeStart = this.time.now;
 
@@ -961,6 +976,7 @@
 
                 if (isSuperShot) {
                     console.log(`💥 SUPER SHOT FIRED! Using ${cannonPower} power!`);
+                    this.sound.play('super_shot');
                     this.superShotReady = false; // Consume the Super Shot
 
                     // If this was the first shot, start the quest system
@@ -969,6 +985,7 @@
                     }
                 } else {
                     console.log(`BOOM! Firing cannon with power ${cannonPower}`);
+                    this.sound.play('cannon_shot');
                 }
 
                 console.log(`Before firing, slots:`, [...this.cannonballSlots]);
@@ -1235,6 +1252,9 @@
                 const currentCount = this.getTotalCannonballs();
 
                 if (currentCount < 4) {
+                    // Play pickup sound
+                    this.sound.play('ball_pickup');
+
                     if (this.isRollingCannonballs) {
                         // During rolling, find the rightmost empty slot in the FINAL locked state
                         let targetSlot = -1;
@@ -1450,25 +1470,30 @@
                         if (!this.gameOverTimer) {
                             this.gameOverTimer = this.time.now;
                         } else if (this.time.now - this.gameOverTimer > 1500) {
-                            this.gameOver();
+                            this.gameOver(true); // Play water splash for natural game over
                         }
                     } else {
                         this.gameOverTimer = null;
                     }
 
                     if (this.ship.body.velocity.y > 500) {
-                        this.gameOver();
+                        this.gameOver(true); // Play water splash for high speed impact
                     }
                 } else {
                     this.gameOverTimer = null;
                 }
             }
 
-            gameOver() {
+            gameOver(playWaterSplash = true) {
                 if (this.gameState === 'gameOver') return;
 
                 this.gameState = 'gameOver';
                 console.log(`Game Over! Max height: ${this.maxHeight}m`);
+
+                // Play water splash sound only if falling back to water (not self-destruct)
+                if (playWaterSplash) {
+                    this.sound.play('water_splash');
+                }
 
                 if (this.maxHeight > this.personalBest) {
                     this.personalBest = this.maxHeight;
@@ -1543,16 +1568,18 @@
 
                 this.playButton.removeAllListeners();
                 this.playButton.on('pointerdown', () => {
+                    this.sound.play('tap_button');
                     heightText.destroy();
                     moonText.destroy();
                     if (this.gameOverText) {
                         this.gameOverText.destroy();
                         this.gameOverText = null;
                     }
-                    this.restartGame();
+                    this.startGame();
                 });
             }
 
+            // Is this function truly necessary? Why not use startGame?
             restartGame() {
                 console.log('Restarting game - resetting all states');
 
@@ -1597,9 +1624,6 @@
                 });
                 this.flyingBalls.clear(true, true);
                 this.cannonballProjectiles.clear(true, true);
-
-                // Go back to animated title screen instead of directly starting game
-                this.showTitleScreen();
             }
 
             update(time, delta) {
