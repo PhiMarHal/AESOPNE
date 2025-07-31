@@ -3,30 +3,29 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Vertical Launcher</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
     <style>
         body {
             margin: 0;
             padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            width: 100%;
+            height: 100vh;
             background: #2c3e50;
             font-family: Arial, sans-serif;
             touch-action: none;
             overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
 
-        #game-container {
+        html {
+            margin: 0;
+            padding: 0;
             width: 100%;
-            height: 100vh;
-            position: relative;
-            margin: 0 auto;
-            max-width: 56.25vh;
-            max-height: 100vh;
+            height: 100%;
         }
     </style>
 </head>
@@ -42,7 +41,7 @@
                 // Game configuration
                 this.GRAVITY = 1500;
                 this.CANNON_POWER = 3000;
-                this.SEA_LEVEL = 1400;
+                this.SEA_LEVEL = 1400; // Back to original
                 this.SHIP_SIZE = 384;
                 this.CANNON_SIZE = 96;
                 this.CANNONBALL_SIZE = 48;
@@ -72,6 +71,9 @@
                 this.cannonChargeStart = 0;
                 this.dormantCannonballs = [];
 
+                // Mobile aiming system - simple
+                this.pointerIsDown = false;
+
                 // Super Shot quest system
                 this.superShotReady = true; // First shot is always a Super Shot
                 this.questTargetFlag = null; // Current quest target flag
@@ -82,6 +84,9 @@
                 // Cooldown system
                 this.cannonOnCooldown = false;
                 this.cannonCooldownStart = 0;
+
+                // Reset mobile aiming system
+                this.pointerIsDown = false;
                 this.cooldownGraphics = [];
                 this.isRollingCannonballs = false;
 
@@ -90,6 +95,10 @@
                 this.cloudGridData = new Map(); // Stores pre-generated cloud positions by grid key
                 this.lastCloudCheck = 0;
                 this.cloudCheckInterval = 300; // Check every 300ms
+
+                // UI positioning - will be set dynamically
+                this.gameWidth = 900;
+                this.gameHeight = 1600;
 
                 console.log('Vertical Launcher initialized with slot-based cannonball system');
             }
@@ -114,6 +123,15 @@
             create() {
                 console.log('Creating game...');
 
+                // Set camera background color for truly infinite sky
+                this.cameras.main.setBackgroundColor(0x87CEEB); // Sky blue
+
+                // Get actual game dimensions
+                this.gameWidth = this.cameras.main.width;
+                this.gameHeight = this.cameras.main.height;
+
+                console.log(`Game dimensions: ${this.gameWidth}x${this.gameHeight}`);
+
                 // Load personal best
                 this.personalBest = parseInt(localStorage.getItem('verticalLauncherBest') || '0');
 
@@ -123,10 +141,13 @@
                 this.gameElements = [];
                 this.titleElements = [];
 
-                // Create infinite background
-                this.gameBackground = this.add.rectangle(0, this.SEA_LEVEL - 2500000, 2000000, 5000000, 0x87CEEB);
-                this.seaFloor = this.add.rectangle(0, this.SEA_LEVEL + 800, 2000000, 1600, 0x2c5f7b);
-                this.sea = this.add.rectangle(0, this.SEA_LEVEL, 500000, 400, 0x3498db);
+                // Initialize dynamic background system
+                this.backgroundRects = [];
+                this.lastBackgroundUpdate = 0;
+                this.backgroundUpdateInterval = 500; // Update every 500ms
+
+                // Create initial background elements around starting area
+                this.createBackgroundElements();
 
                 // Create UI areas - fixed to camera
                 this.topUI = this.add.rectangle(450, 100, 900, 200, 0x34495e);
@@ -138,7 +159,7 @@
                 this.bottomUI.setDepth(999);
 
                 // Create ship
-                this.ship = this.physics.add.sprite(450, this.SEA_LEVEL - this.SHIP_SIZE / 2, 'ship');
+                this.ship = this.physics.add.sprite(450, this.SEA_LEVEL, 'ship');
                 this.ship.setDisplaySize(this.SHIP_SIZE, this.SHIP_SIZE);
                 this.ship.body.setSize(this.SHIP_SIZE, this.SHIP_SIZE);
                 this.ship.body.setGravityY(0);
@@ -167,22 +188,22 @@
                 this.personalBestText.setDepth(1000);
 
                 // Create quest UI elements - positioned at 60-70% to the right
-                this.questFlagIcon = this.add.image(650, 100, 'flag_milady'); // Default texture, will be updated
+                this.questFlagIcon = this.add.image(650, 100, 'flag_milady');
                 this.questFlagIcon.setDisplaySize(120, 120); // 2x bigger for better visibility
-                this.questFlagBaseScale = this.questFlagIcon.scaleX; // Store the scale that gives us 120x120
+                this.questFlagBaseScale = this.questFlagIcon.scaleX;
                 this.questFlagIcon.setScrollFactor(0);
                 this.questFlagIcon.setDepth(1000);
-                this.questFlagIcon.setVisible(false); // Hidden until quest starts
+                this.questFlagIcon.setVisible(false);
 
-                this.questCountText = this.add.text(760, 100, '4', { // Further right and down
+                this.questCountText = this.add.text(760, 100, '4', {
                     fontSize: '72px', // 50% bigger (was 48px)
                     fill: '#FFD700',
                     fontWeight: 'bold'
                 }).setOrigin(0.5);
-                this.questCountBaseScale = this.questCountText.scaleX; // Store the base scale
+                this.questCountBaseScale = this.questCountText.scaleX;
                 this.questCountText.setScrollFactor(0);
                 this.questCountText.setDepth(1000);
-                this.questCountText.setVisible(false); // Hidden until quest starts
+                this.questCountText.setVisible(false);
 
                 // Create cannonball UI with new positioning - rightmost slot centered at 450
                 this.cannonballUI = [];
@@ -234,9 +255,9 @@
                 // Initialize cloud system
                 this.initializeCloudSystem();
 
-                // Store elements
+                // Store elements - updated for dynamic background
                 this.gameElements = [
-                    this.gameBackground, this.seaFloor, this.sea, this.ship, this.cannon
+                    this.ship, this.cannon, ...this.backgroundRects
                 ];
 
                 this.uiElements = [
@@ -276,7 +297,7 @@
                     this.startGame();
                 });
 
-                // Input handling
+                // Input handling - simple drag-to-aim while finger down
                 this.input.on('pointermove', (pointer) => {
                     this.lastPointerPosition = { x: pointer.x, y: pointer.y };
                     if (this.gameState === 'playing') {
@@ -285,6 +306,9 @@
                 });
 
                 this.input.on('pointerdown', (pointer) => {
+                    this.pointerIsDown = true;
+                    this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+
                     const canClick = this.gameState === 'playing' &&
                         this.gameStartTime &&
                         (this.time.now - this.gameStartTime > 500) &&
@@ -294,10 +318,13 @@
                         this.hasCannonballInRightmostSlot();
 
                     if (canClick) {
-                        this.lastPointerPosition = { x: pointer.x, y: pointer.y };
                         this.updateCannonAngle();
                         this.startCannonCharge();
                     }
+                });
+
+                this.input.on('pointerup', (pointer) => {
+                    this.pointerIsDown = false;
                 });
 
                 this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -472,6 +499,33 @@
                 }
             }
 
+            createBackgroundElements() {
+                // Create smaller sea - half height starting at SEA_LEVEL
+                // Sea top at SEA_LEVEL (1400), height 450px, so center at SEA_LEVEL + 225
+                this.sea = this.add.rectangle(0, this.SEA_LEVEL + 225, 20000, 450, 0x3498db);
+                this.backgroundRects.push(this.sea);
+                console.log('Created half-height sea starting at original SEA_LEVEL');
+            }
+
+            updateDynamicBackground() {
+                // Only update background periodically for performance
+                if (this.time.now - this.lastBackgroundUpdate < this.backgroundUpdateInterval) {
+                    return;
+                }
+                this.lastBackgroundUpdate = this.time.now;
+
+                // No need to create additional sky rectangles - camera background color handles infinite sky
+                // Only need to manage sea element positioning if camera goes very wide
+                const camera = this.cameras.main;
+                const cameraX = camera.scrollX + camera.width / 2;
+
+                // Reposition sea element to follow camera horizontally if needed
+                if (Math.abs(this.sea.x - cameraX) > 5000) {
+                    this.sea.x = cameraX;
+                    console.log(`Repositioned sea element to follow camera at x: ${cameraX}`);
+                }
+            }
+
             hasCannonballInRightmostSlot() {
                 return this.cannonballSlots[3]; // Rightmost slot is index 3
             }
@@ -615,7 +669,7 @@
                 this.destructButton.setInteractive();
                 this.destructButton.on('pointerdown', (pointer, localX, localY, event) => {
                     console.log('Self-destruct activated!');
-                    event.stopPropagation(); // Prevent background click
+                    event.stopPropagation();
                     this.hideHelpPopup();
                     this.gameOver();
                 });
@@ -684,6 +738,7 @@
 
             showTitleScreen() {
                 this.gameElements.forEach(element => element.setVisible(false));
+                this.backgroundRects.forEach(rect => rect.setVisible(false));
                 this.uiElements.forEach(element => element.setVisible(false));
                 this.clouds.forEach(cloud => cloud.setVisible(false));
                 this.titleElements.forEach(element => element.setVisible(true));
@@ -693,6 +748,7 @@
             showGameScreen() {
                 this.titleElements.forEach(element => element.setVisible(false));
                 this.gameElements.forEach(element => element.setVisible(true));
+                this.backgroundRects.forEach(rect => rect.setVisible(true));
                 this.uiElements.forEach(element => element.setVisible(true));
                 this.gameState = 'playing';
             }
@@ -731,18 +787,24 @@
                 this.cloudGridData.clear();
                 this.lastCloudCheck = 0;
 
+                // Reset dynamic background system
+                this.lastBackgroundUpdate = 0;
+
                 // Reset cooldown state
                 this.cannonOnCooldown = false;
                 this.cannonCooldownStart = 0;
 
+                // Reset mobile aiming system
+                this.pointerIsDown = false;
+
                 // Reset ship position and physics
-                this.ship.setPosition(450, this.SEA_LEVEL - this.SHIP_SIZE / 2);
+                this.ship.setPosition(this.ship.x, this.SEA_LEVEL);
                 this.ship.setVelocity(0, 0);
                 this.ship.body.setAllowGravity(false);
                 this.ship.body.setImmovable(false);
 
-                // Reset cannon position and angle - use same calculation as update loop
-                const initialShipCenterX = this.ship.x; // Ship sprite center
+                // Reset cannon position and angle
+                const initialShipCenterX = this.ship.x;
                 const initialShipCenterY = this.ship.y;
                 this.cannon.x = initialShipCenterX;
                 this.cannon.y = initialShipCenterY + 80;
@@ -753,10 +815,10 @@
                 this.flyingBalls.clear(true, true);
                 this.cannonballProjectiles.clear(true, true);
 
-                // Camera follows ship with instant following (no lag)
+                // Camera follows ship with instant following
                 this.cameras.main.setZoom(1);
                 this.cameras.main.startFollow(this.ship, true, 1, 0);
-                this.cameras.main.scrollY = this.SEA_LEVEL - 800;
+                this.cameras.main.scrollY = this.SEA_LEVEL - 1025; // Show more sky (was -800)
 
                 console.log('Using instant camera following (lerp=1) to eliminate interpolation lag');
 
@@ -1291,7 +1353,7 @@
                     // Follow horizontally but not vertically
                     this.cameras.main.setLerp(1, 0);
                     // Only set Y position once when transitioning, not every frame
-                    this.cameras.main.scrollY = this.SEA_LEVEL - 800;
+                    this.cameras.main.scrollY = this.SEA_LEVEL - 1025; // Show more sky (was -800)
                 }
 
                 // Don't constantly override scrollY - let camera system handle it
@@ -1350,7 +1412,7 @@
             showGameOverScreen() {
                 // Stop following and return camera to initial position
                 this.cameras.main.stopFollow();
-                this.cameras.main.setScroll(0, this.SEA_LEVEL - 800);
+                this.cameras.main.setScroll(0, this.SEA_LEVEL - 1025); // Show more sky (was -800)
 
                 this.showTitleScreen();
 
@@ -1425,7 +1487,7 @@
 
                 // Keep ship floating at sea level if gravity not enabled yet
                 if (!this.ship.body.allowGravity) {
-                    this.ship.setPosition(this.ship.x, this.SEA_LEVEL - this.SHIP_SIZE / 2);
+                    this.ship.setPosition(this.ship.x, this.SEA_LEVEL);
                     this.ship.setVelocity(0, 0);
                 }
 
@@ -1521,6 +1583,9 @@
 
                 // Update cloud system
                 this.updateClouds();
+
+                // Update dynamic background system
+                this.updateDynamicBackground();
 
                 // Check for altitude-based spawning
                 this.checkAltitudeSpawning();
