@@ -100,6 +100,16 @@
                 this.gameWidth = 900;
                 this.gameHeight = 1600;
 
+                // Music system
+                this.musicStarted = false;
+                this.isAscending = false;
+                this.wasAscending = false;
+                this.lowPassFilter = null;
+                this.filterGainNode = null;
+                this.directGainNode = null;
+                this.isFilterActive = false;
+                this.filterSetupComplete = false;
+
                 console.log('Vertical Launcher initialized with slot-based cannonball system');
             }
 
@@ -127,6 +137,9 @@
                 this.load.audio('water_splash', 'assets/water_splash.mp3');
                 this.load.audio('ball_pickup', 'assets/ball_pickup.mp3');
                 this.load.audio('tap_button', 'assets/tap_button.mp3');
+
+                // Load music
+                this.load.audio('aesopne_music', 'assets/aesopne.mp3');
             }
 
             create() {
@@ -354,7 +367,128 @@
                 this.physics.world.setBounds(-100000, this.SEA_LEVEL - 300000, 200000, 300000);
                 this.physics.add.overlap(this.ship, this.flyingBalls, this.collectFlyingBall, null, this);
 
+                // Create music system
+                this.music = this.sound.add('aesopne_music', { loop: true, volume: 0.7 });
+
                 console.log('Game created successfully');
+            }
+
+            setupMusicFilter() {
+                if (this.filterSetupComplete || !this.music || !this.music.isPlaying) {
+                    return;
+                }
+
+                try {
+                    const audioContext = this.sound.context;
+                    if (!audioContext) {
+                        console.warn('No Web Audio context available for music filter');
+                        return;
+                    }
+
+                    // Create the filter chain once and keep it
+                    this.lowPassFilter = audioContext.createBiquadFilter();
+                    this.lowPassFilter.type = 'lowpass';
+                    this.lowPassFilter.frequency.value = 500; // More aggressive than 800Hz
+                    this.lowPassFilter.Q.value = 1.0; // Sharper rolloff than 0.5
+
+                    // Create gain nodes for smooth mixing
+                    this.directGainNode = audioContext.createGain();
+                    this.filterGainNode = audioContext.createGain();
+                    const mixerNode = audioContext.createGain();
+
+                    // Initially: direct path active, filtered path muted
+                    this.directGainNode.gain.value = 1.0;
+                    this.filterGainNode.gain.value = 0.0;
+                    mixerNode.gain.value = 0.7; // Master volume
+
+                    const destination = this.sound.destination || audioContext.destination;
+
+                    // Set up the audio routing (keep this permanently)
+                    if (this.music.source && this.music.source.disconnect) {
+                        this.music.source.disconnect();
+
+                        // Split signal into two paths
+                        this.music.source.connect(this.directGainNode);
+                        this.music.source.connect(this.lowPassFilter);
+
+                        // Filter path: source -> filter -> filterGain -> mixer
+                        this.lowPassFilter.connect(this.filterGainNode);
+
+                        // Direct path: source -> directGain -> mixer
+                        // Filter path: already connected above
+                        this.directGainNode.connect(mixerNode);
+                        this.filterGainNode.connect(mixerNode);
+
+                        // Final output
+                        mixerNode.connect(destination);
+
+                        this.filterSetupComplete = true;
+                        console.log('🎛️ Music filter chain setup complete');
+                    }
+                } catch (error) {
+                    console.error('Failed to setup music filter:', error);
+                }
+            }
+
+            applyLowPassFilter() {
+                if (!this.filterSetupComplete) {
+                    this.setupMusicFilter();
+                    // Wait a moment for setup to complete, then try again
+                    this.time.delayedCall(100, () => this.applyLowPassFilter());
+                    return;
+                }
+
+                if (this.isFilterActive || !this.directGainNode || !this.filterGainNode) {
+                    return;
+                }
+
+                try {
+                    // Smooth crossfade to filtered sound (200ms transition)
+                    const fadeTime = 0.2;
+                    const now = this.sound.context.currentTime;
+
+                    // Fade out direct path
+                    this.directGainNode.gain.cancelScheduledValues(now);
+                    this.directGainNode.gain.setValueAtTime(this.directGainNode.gain.value, now);
+                    this.directGainNode.gain.linearRampToValueAtTime(0.0, now + fadeTime);
+
+                    // Fade in filtered path  
+                    this.filterGainNode.gain.cancelScheduledValues(now);
+                    this.filterGainNode.gain.setValueAtTime(this.filterGainNode.gain.value, now);
+                    this.filterGainNode.gain.linearRampToValueAtTime(0.8, now + fadeTime); // Slightly quieter for more dramatic effect
+
+                    this.isFilterActive = true;
+                    console.log('🔇 Applied low pass filter - music muted');
+                } catch (error) {
+                    console.error('Failed to apply low pass filter:', error);
+                }
+            }
+
+            removeLowPassFilter() {
+                if (!this.isFilterActive || !this.directGainNode || !this.filterGainNode) {
+                    return;
+                }
+
+                try {
+                    // Smooth crossfade back to direct sound (200ms transition)
+                    const fadeTime = 0.2;
+                    const now = this.sound.context.currentTime;
+
+                    // Fade in direct path
+                    this.directGainNode.gain.cancelScheduledValues(now);
+                    this.directGainNode.gain.setValueAtTime(this.directGainNode.gain.value, now);
+                    this.directGainNode.gain.linearRampToValueAtTime(1.0, now + fadeTime);
+
+                    // Fade out filtered path
+                    this.filterGainNode.gain.cancelScheduledValues(now);
+                    this.filterGainNode.gain.setValueAtTime(this.filterGainNode.gain.value, now);
+                    this.filterGainNode.gain.linearRampToValueAtTime(0.0, now + fadeTime);
+
+                    this.isFilterActive = false;
+                    console.log('🔊 Removed low pass filter - music clear');
+                } catch (error) {
+                    console.error('Failed to remove low pass filter:', error);
+                }
             }
 
             initializeCloudSystem() {
@@ -889,6 +1023,16 @@
                 // Reset mobile aiming system
                 this.pointerIsDown = false;
 
+                // Reset music system
+                if (this.music && this.music.isPlaying) {
+                    this.music.stop();
+                }
+                this.removeLowPassFilter(); // Clean up any active filter
+                this.filterSetupComplete = false; // Reset filter setup
+                this.musicStarted = false;
+                this.isAscending = false;
+                this.wasAscending = false;
+
                 // Reset ship position and physics
                 this.ship.setPosition(this.ship.x, this.SEA_LEVEL);
                 this.ship.setVelocity(0, 0);
@@ -1069,6 +1213,18 @@
                 const velocityY = -Math.sin(this.cannonAngle) * cannonPower;
 
                 this.ship.setVelocity(velocityX, velocityY);
+
+                // Start music on first shot
+                if (!this.musicStarted) {
+                    this.music.play();
+                    this.musicStarted = true;
+                    this.isAscending = true;
+                    this.wasAscending = true;
+                    console.log('🎵 Music started - player is ascending!');
+
+                    // Set up the filter chain after a brief delay to ensure music is playing
+                    this.time.delayedCall(200, () => this.setupMusicFilter());
+                }
 
                 // STEP 4: Now animate the visual rolling on top of the correct final state
                 ballMovements.forEach(movement => {
@@ -1490,6 +1646,14 @@
                 this.gameState = 'gameOver';
                 console.log(`Game Over! Max height: ${this.maxHeight}m`);
 
+                // Stop music on game over
+                if (this.music && this.music.isPlaying) {
+                    this.music.stop();
+                    console.log('🎵 Music stopped - game over');
+                }
+                this.removeLowPassFilter(); // Clean up any active filter
+                this.filterSetupComplete = false; // Reset filter setup
+
                 // Play water splash sound only if falling back to water (not self-destruct)
                 if (playWaterSplash) {
                     this.sound.play('water_splash');
@@ -1577,53 +1741,6 @@
                     }
                     this.startGame();
                 });
-            }
-
-            // Is this function truly necessary? Why not use startGame?
-            restartGame() {
-                console.log('Restarting game - resetting all states');
-
-                this.gameOverTimer = null;
-                this.initialSpawnCounter = 0;
-                this.highestAltitudeZone = 0;
-                this.cannonCharging = false;
-                this.cannonShakeOffset = { x: 0, y: 0 };
-                this.dormantCannonballs = [];
-                this.isRollingCannonballs = false;
-
-                this.cannonOnCooldown = false;
-                this.cannonCooldownStart = 0;
-
-                // Reset slot flags
-                this.cannonballSlotFlags = [null, null, null, null];
-
-                // Reset Super Shot quest system
-                this.superShotReady = true;
-                this.questTargetFlag = null;
-                this.questTargetCount = 4;
-                this.questCurrentCount = 0;
-                this.questLevel = 1;
-
-                if (this.chargeTimer) {
-                    this.chargeTimer.destroy();
-                    this.chargeTimer = null;
-                }
-
-                // Reset camera following state
-                this.cameraFollowing = false;
-
-                this.ship.body.setAllowGravity(false);
-                this.ship.body.setGravityY(0);
-                this.ship.body.setImmovable(false);
-                this.ship.setVelocity(0, 0);
-
-                this.flyingBalls.children.entries.forEach(ball => {
-                    if (ball.leftWing) ball.leftWing.destroy();
-                    if (ball.rightWing) ball.rightWing.destroy();
-                    if (ball.flag) ball.flag.destroy();
-                });
-                this.flyingBalls.clear(true, true);
-                this.cannonballProjectiles.clear(true, true);
             }
 
             update(time, delta) {
@@ -1717,6 +1834,24 @@
 
                     if (canFire) {
                         this.startCannonCharge();
+                    }
+                }
+
+                // Update music filter based on ascending state
+                if (this.musicStarted && this.ship.body.allowGravity && this.filterSetupComplete) {
+                    // Player is ascending if Y velocity is negative (up is negative in Phaser)
+                    this.isAscending = this.ship.body.velocity.y < -50; // Small threshold to avoid micro-movements
+
+                    // Only change filter state when ascending state actually changes
+                    if (this.isAscending !== this.wasAscending) {
+                        if (this.isAscending) {
+                            // Started ascending - remove muffled filter for clear music
+                            this.removeLowPassFilter();
+                        } else {
+                            // Stopped ascending - apply muffled filter
+                            this.applyLowPassFilter();
+                        }
+                        this.wasAscending = this.isAscending;
                     }
                 }
 
