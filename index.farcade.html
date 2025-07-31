@@ -1,0 +1,2087 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AESOPNE</title>
+    <link rel="icon" type="image/png" href="assets/ship.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100vh;
+            background: #2c3e50;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+            overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@latest/dist/index.min.js"></script>
+</head>
+
+<body>
+    <div id="game-container"></div>
+
+    <script>
+        class VerticalLauncher extends Phaser.Scene {
+            constructor() {
+                super({ key: 'VerticalLauncher' });
+
+                // Game configuration
+                this.GRAVITY = 1500;
+                this.CANNON_POWER = 3000;
+                this.SEA_LEVEL = 1400; // Back to original
+                this.SHIP_SIZE = 384;
+                this.CANNON_SIZE = 96;
+                this.CANNONBALL_SIZE = 48;
+                this.FLYING_BALL_SIZE = 80;
+                this.PIXELS_PER_METER = 20;
+                this.CANNON_CHARGE_TIME = 500;
+                this.CANNON_COOLDOWN_TIME = 1000;
+                this.RESPAWN_DISTANCE = 1200;
+
+                // Game state
+                this.gameState = 'menu';
+                this.cannonballSlots = [true, true, true, true]; // Track which slots have cannonballs
+                this.cannonballSlotFlags = [null, null, null, null]; // Track flag types for each slot
+                this.maxHeight = 0;
+                this.currentHeight = 0;
+                this.personalBest = 0;
+                this.flyingBallSpawnRate = 2000;
+                this.flyingBallTimer = 0;
+                this.lastPointerPosition = { x: 450, y: 800 };
+                this.cannonAngle = 0;
+                this.cameraFollowing = false;
+                this.gameStartTime = null;
+                this.gameOverTimer = null;
+                this.initialSpawnCounter = 0;
+                this.highestAltitudeZone = 0;
+                this.cannonCharging = false;
+                this.cannonChargeStart = 0;
+                this.dormantCannonballs = [];
+
+                // Mobile aiming system - simple
+                this.pointerIsDown = false;
+
+                // Super Shot quest system
+                this.superShotReady = true; // First shot is always a Super Shot
+                this.questTargetFlag = null; // Current quest target flag
+                this.questTargetCount = 4; // How many we need to collect
+                this.questCurrentCount = 0; // How many we've collected
+                this.questLevel = 1; // Which quest we're on (affects target count)
+
+                // Cooldown system
+                this.cannonOnCooldown = false;
+                this.cannonCooldownStart = 0;
+
+                // Reset mobile aiming system
+                this.pointerIsDown = false;
+                this.cooldownGraphics = [];
+                this.isRollingCannonballs = false;
+
+                // Cloud system
+                this.clouds = [];
+                this.cloudGridData = new Map(); // Stores pre-generated cloud positions by grid key
+                this.lastCloudCheck = 0;
+                this.cloudCheckInterval = 300; // Check every 300ms
+
+                // UI positioning - will be set dynamically
+                this.gameWidth = 900;
+                this.gameHeight = 1600;
+
+                // Music system
+                this.musicStarted = false;
+                this.isAscending = false;
+                this.wasAscending = false;
+                this.lowPassFilter = null;
+                this.filterGainNode = null;
+                this.directGainNode = null;
+                this.isFilterActive = false;
+                this.filterSetupComplete = false;
+                this.originalMusicSource = null;
+                this.originalMusicSource = null; // Track the original source
+
+                console.log('Vertical Launcher initialized with slot-based cannonball system');
+            }
+
+            preload() {
+                const ASSET_BASE = 'https://aesopnestuff.loiyaa.com';
+
+                // Set background to match title screen
+                this.cameras.main.setBackgroundColor(0x2c3e50);
+
+                // Sprites
+                this.load.image('ship', ASSET_BASE + '/assets/ship.png');
+                this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
+                this.load.image('wing', ASSET_BASE + '/assets/wing.png');
+
+                this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
+                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
+                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2.png');
+                this.load.image('button_help', ASSET_BASE + '/assets/button_help.png');
+                this.load.image('button_destruct', ASSET_BASE + '/assets/button_destruct.png');
+                this.load.image('button_start', ASSET_BASE + '/assets/button_start.png');
+                this.load.image('flag_milady', ASSET_BASE + '/assets/flag_milady.png');
+                this.load.image('flag_bayc', ASSET_BASE + '/assets/flag_bayc.png');
+                this.load.image('flag_noun', ASSET_BASE + '/assets/flag_noun.png');
+                this.load.image('flag_doodle', ASSET_BASE + '/assets/flag_doodle.png');
+                this.load.image('title_aesopne', ASSET_BASE + '/assets/title_aesopne.png');
+
+                // Sounds
+                this.load.audio('rolling_ball', ASSET_BASE + '/assets/rolling_ball.mp3');
+                this.load.audio('cannon_shot', ASSET_BASE + '/assets/cannon_shot.mp3');
+                this.load.audio('super_shot', ASSET_BASE + '/assets/super_shot.mp3');
+                this.load.audio('water_splash', ASSET_BASE + '/assets/water_splash.mp3');
+                this.load.audio('ball_pickup', ASSET_BASE + '/assets/ball_pickup.mp3');
+                this.load.audio('tap_button', ASSET_BASE + '/assets/tap_button.mp3');
+
+                // Note: Music will be loaded later during title screen
+            }
+
+            create() {
+                console.log('Creating game...');
+
+                // Set camera background color for truly infinite sky
+                this.cameras.main.setBackgroundColor(0x87CEEB); // Sky blue
+
+                // Get actual game dimensions
+                this.gameWidth = this.cameras.main.width;
+                this.gameHeight = this.cameras.main.height;
+
+                console.log(`Game dimensions: ${this.gameWidth}x${this.gameHeight}`);
+
+                // Load personal best
+                this.personalBest = parseInt(localStorage.getItem('verticalLauncherBest') || '0');
+
+                // Initialize all groups and variables first
+                this.flyingBalls = this.physics.add.group();
+                this.cannonballProjectiles = this.physics.add.group();
+                this.gameElements = [];
+                this.titleElements = [];
+
+                // Initialize dynamic background system
+                this.backgroundRects = [];
+                this.lastBackgroundUpdate = 0;
+                this.backgroundUpdateInterval = 500; // Update every 500ms
+
+                // Create initial background elements around starting area
+                this.createBackgroundElements();
+
+                // Create UI areas - fixed to camera
+                this.topUI = this.add.rectangle(450, 100, 900, 200, 0x34495e);
+                this.topUI.setScrollFactor(0);
+                this.topUI.setDepth(999);
+
+                this.bottomUI = this.add.rectangle(450, 1500, 900, 200, 0x34495e);
+                this.bottomUI.setScrollFactor(0);
+                this.bottomUI.setDepth(999);
+
+                // Create ship
+                this.ship = this.physics.add.sprite(450, this.SEA_LEVEL, 'ship');
+                this.ship.setDisplaySize(this.SHIP_SIZE, this.SHIP_SIZE);
+                this.ship.body.setSize(this.SHIP_SIZE, this.SHIP_SIZE);
+                this.ship.body.setGravityY(0);
+                this.ship.body.setCollideWorldBounds(false);
+                this.ship.body.setDrag(0.98);
+                this.ship.body.setAllowGravity(false);
+
+                // Create cannon
+                this.cannon = this.add.image(this.ship.x, this.ship.y + 80, 'cannon');
+                this.cannon.setDisplaySize(this.CANNON_SIZE, this.CANNON_SIZE * 2);
+                this.cannon.setOrigin(0.5, 0.5);
+
+                // Create UI text - fixed to camera
+                this.heightText = this.add.text(40, 60, 'Height: 0m', {
+                    fontSize: '40px',
+                    fill: '#ffffff'
+                });
+                this.heightText.setScrollFactor(0);
+                this.heightText.setDepth(1000);
+
+                this.personalBestText = this.add.text(40, 120, `Best: ${this.personalBest}m`, {
+                    fontSize: '32px',
+                    fill: '#ecf0f1'
+                });
+                this.personalBestText.setScrollFactor(0);
+                this.personalBestText.setDepth(1000);
+
+                // Create quest UI elements - positioned at 60-70% to the right
+                this.questFlagIcon = this.add.image(650, 100, 'flag_milady');
+                this.questFlagIcon.setDisplaySize(120, 120); // 2x bigger for better visibility
+                this.questFlagBaseScale = this.questFlagIcon.scaleX;
+                this.questFlagIcon.setScrollFactor(0);
+                this.questFlagIcon.setDepth(1000);
+                this.questFlagIcon.setVisible(false);
+
+                this.questCountText = this.add.text(760, 100, '4', {
+                    fontSize: '72px', // 50% bigger (was 48px)
+                    fill: '#FFD700',
+                    fontWeight: 'bold'
+                }).setOrigin(0.5);
+                this.questCountBaseScale = this.questCountText.scaleX;
+                this.questCountText.setScrollFactor(0);
+                this.questCountText.setDepth(1000);
+                this.questCountText.setVisible(false);
+
+                // Create cannonball UI with new positioning - rightmost slot centered at 450
+                this.cannonballUI = [];
+                this.cannonballUIFlags = []; // Flags for UI cannonballs
+                this.cannonballPlaceholders = []; // Gray placeholders always visible
+                this.cooldownGraphics = [];
+                this.cannonballSlotPositions = [90, 210, 330, 450]; // Rightmost slot at center
+
+                for (let i = 0; i < 4; i++) {
+                    // Create gray placeholder (always visible)
+                    const placeholder = this.add.image(this.cannonballSlotPositions[i], 1500, 'cannonball');
+                    placeholder.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                    placeholder.setScrollFactor(0);
+                    placeholder.setDepth(999); // Behind actual cannonballs
+                    placeholder.setTint(0x7f8c8d);
+                    placeholder.setAlpha(0.5);
+                    this.cannonballPlaceholders.push(placeholder);
+
+                    // Create actual cannonball (shows when slot is filled)
+                    const ball = this.add.image(this.cannonballSlotPositions[i], 1500, 'cannonball');
+                    ball.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                    ball.setScrollFactor(0);
+                    ball.setDepth(1000); // On top of placeholders
+                    this.cannonballUI.push(ball);
+
+                    // Create flag for cannonball (starts hidden)
+                    const flag = this.add.image(this.cannonballSlotPositions[i], 1500, 'flag_milady'); // Default texture
+                    flag.setDisplaySize(72, 72); // Better size for UI cannonballs
+                    flag.setScrollFactor(0);
+                    flag.setDepth(1001); // On top of cannonballs
+                    flag.setVisible(false);
+                    this.cannonballUIFlags.push(flag);
+
+                    // Create cooldown circle graphics
+                    const cooldownGraphic = this.add.graphics();
+                    cooldownGraphic.setScrollFactor(0);
+                    cooldownGraphic.setDepth(1002); // On top of flags
+                    this.cooldownGraphics.push(cooldownGraphic);
+                }
+
+                // Create help button - symmetric with leftmost cannonball
+                this.helpButton = this.add.image(810, 1500, 'button_help'); // 810 = 450 + (450-90)
+                this.helpButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                this.helpButton.setScrollFactor(0);
+                this.helpButton.setDepth(1000);
+                this.helpButton.setInteractive();
+                this.helpButton.on('pointerdown', () => {
+                    this.sound.play('tap_button');
+                    this.showHelpPopup();
+                });
+
+                // Initialize cloud system
+                this.initializeCloudSystem();
+
+                // Store elements - updated for dynamic background
+                this.gameElements = [
+                    this.ship, this.cannon, ...this.backgroundRects
+                ];
+
+                this.uiElements = [
+                    this.topUI, this.bottomUI, this.heightText,
+                    this.personalBestText, this.questFlagIcon, this.questCountText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cannonballUIFlags, ...this.cooldownGraphics,
+                    this.helpButton
+                ];
+
+                // Create title screen
+                this.titleBG = this.add.rectangle(450, 800, 900, 1600, 0x2c3e50);
+                this.titleBG.setScrollFactor(0);
+                this.titleBG.setDepth(2000);
+
+                // Replace text with image - set to user's preferred size
+                this.titleImage = this.add.image(450, -100, 'title_aesopne'); // Start above screen for physics animation
+                this.titleImage.setDisplaySize(600, 300);
+                this.titleImage.setOrigin(0.5);
+                this.titleImage.setScrollFactor(0);
+                this.titleImage.setDepth(2001);
+
+                this.playButton = this.add.image(450, -200, 'button_start'); // Start above screen for physics animation
+                this.playButton.setDisplaySize(432, 216); // 20% bigger (was 360x180)
+                this.playButton.setScrollFactor(0);
+                this.playButton.setDepth(2001);
+
+                // Create invisible physics floors for bouncing animation - updated positions
+                this.titleFloor = this.add.rectangle(450, 480, 900, 50, 0x000000); // 30% of screen (480px)
+                this.titleFloor.setScrollFactor(0);
+                this.titleFloor.setDepth(1999);
+                this.titleFloor.setVisible(false);
+
+                this.buttonFloor = this.add.rectangle(450, 1120, 900, 50, 0x000000); // 70% of screen (1120px)
+                this.buttonFloor.setScrollFactor(0);
+                this.buttonFloor.setDepth(1999);
+                this.buttonFloor.setVisible(false);
+
+                this.titleElements = [this.titleBG, this.titleImage, this.playButton, this.titleFloor, this.buttonFloor];
+
+                // Start with title screen
+                this.showTitleScreen();
+
+                // Set up interactions - but don't make interactive yet (physics animation will handle this)
+                this.playButton.on('pointerdown', () => {
+                    console.log('Play button clicked');
+                    this.sound.play('tap_button');
+                    this.startGame();
+                });
+
+                // Input handling - simple drag-to-aim while finger down
+                this.input.on('pointermove', (pointer) => {
+                    this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+                    if (this.gameState === 'playing') {
+                        this.updateCannonAngle();
+                    }
+                });
+
+                this.input.on('pointerdown', (pointer) => {
+                    this.pointerIsDown = true;
+                    this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+
+                    const canClick = this.gameState === 'playing' &&
+                        this.gameStartTime &&
+                        (this.time.now - this.gameStartTime > 500) &&
+                        !this.cannonCharging &&
+                        !this.cannonOnCooldown &&
+                        !this.isRollingCannonballs &&
+                        this.hasCannonballInRightmostSlot();
+
+                    if (canClick) {
+                        this.updateCannonAngle();
+                        this.startCannonCharge();
+                    }
+                });
+
+                this.input.on('pointerup', (pointer) => {
+                    this.pointerIsDown = false;
+                });
+
+                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+                // Physics
+                this.physics.world.setBounds(-100000, this.SEA_LEVEL - 300000, 200000, 300000);
+                this.physics.add.overlap(this.ship, this.flyingBalls, this.collectFlyingBall, null, this);
+
+                // Create music system
+                this.music = null; // Will be created after async loading
+
+                console.log('Game created successfully');
+            }
+
+            loadMusicAsync() {
+                if (this.music) {
+                    return; // Already loaded
+                }
+
+                console.log('🎵 Starting async music load...');
+
+                // Create a loader for just the music
+                const loader = new Phaser.Loader.LoaderPlugin(this);
+
+                // Load the music
+                loader.audio('aesopne_music', 'https://aesopnestuff.loiyaa.com/assets/aesopne.mp3');
+
+                // Handle completion
+                loader.once('complete', () => {
+                    console.log('🎵 Music loading complete!');
+
+                    // Add to sound manager and store reference
+                    this.music = this.sound.add('aesopne_music', { loop: true, volume: 0.7 });
+
+                    // If the game has already started and we haven't started music yet, start it now
+                    if (this.gameState === 'playing' && !this.musicStarted && this.ship.body.allowGravity) {
+                        this.music.play();
+                        this.musicStarted = true;
+                        this.isAscending = true;
+                        this.wasAscending = true;
+                        console.log('🎵 Music started (late load) - player is ascending!');
+
+                        // Set up the filter chain
+                        this.time.delayedCall(200, () => this.setupMusicFilter());
+                    }
+
+                    console.log('🎵 Music ready for playback');
+                });
+
+                // Handle errors
+                loader.once('loaderror', (fileObj) => {
+                    console.error('❌ Error loading music:', fileObj);
+                    // Game will still work without music
+                });
+
+                // Start loading
+                loader.start();
+            }
+
+            setupMusicFilter() {
+                if (this.filterSetupComplete || !this.music || !this.music.isPlaying) {
+                    return;
+                }
+
+                try {
+                    const audioContext = this.sound.context;
+                    if (!audioContext) {
+                        console.warn('No Web Audio context available for music filter');
+                        return;
+                    }
+
+                    // Store reference to the current music source
+                    this.originalMusicSource = this.music.source;
+
+                    // Create the filter chain once and keep it
+                    this.lowPassFilter = audioContext.createBiquadFilter();
+                    this.lowPassFilter.type = 'lowpass';
+                    this.lowPassFilter.frequency.value = 500; // More aggressive than 800Hz
+                    this.lowPassFilter.Q.value = 1.0; // Sharper rolloff than 0.5
+
+                    // Create gain nodes for smooth mixing
+                    this.directGainNode = audioContext.createGain();
+                    this.filterGainNode = audioContext.createGain();
+                    const mixerNode = audioContext.createGain();
+
+                    // Initially: direct path active, filtered path muted
+                    this.directGainNode.gain.value = 1.0;
+                    this.filterGainNode.gain.value = 0.0;
+                    mixerNode.gain.value = 0.7; // Master volume
+
+                    const destination = this.sound.destination || audioContext.destination;
+
+                    // Set up the audio routing (keep this permanently)
+                    if (this.music.source && this.music.source.disconnect) {
+                        this.music.source.disconnect();
+
+                        // Split signal into two paths
+                        this.music.source.connect(this.directGainNode);
+                        this.music.source.connect(this.lowPassFilter);
+
+                        // Filter path: source -> filter -> filterGain -> mixer
+                        this.lowPassFilter.connect(this.filterGainNode);
+
+                        // Direct path: source -> directGain -> mixer
+                        // Filter path: already connected above
+                        this.directGainNode.connect(mixerNode);
+                        this.filterGainNode.connect(mixerNode);
+
+                        // Final output
+                        mixerNode.connect(destination);
+
+                        this.filterSetupComplete = true;
+                        console.log('🎛️ Music filter chain setup complete');
+                    }
+                } catch (error) {
+                    console.error('Failed to setup music filter:', error);
+                }
+            }
+
+            checkAndRepairMusicFilter() {
+                // Early return if music not available
+                if (!this.music || !this.originalMusicSource) {
+                    return false;
+                }
+
+                // Check if the music source has changed (happens when looping)
+                if (this.music.source !== this.originalMusicSource) {
+                    console.log('🔄 Music source changed (probably looped) - re-establishing filter chain');
+                    const wasFilterActive = this.isFilterActive;
+                    this.filterSetupComplete = false;
+                    this.setupMusicFilter();
+
+                    // Restore the previous filter state
+                    if (wasFilterActive && this.filterSetupComplete) {
+                        // Re-apply the muted state immediately (no smooth transition needed)
+                        this.directGainNode.gain.value = 0.0;
+                        this.filterGainNode.gain.value = 0.8;
+                        console.log('🔇 Restored muted filter state after source change');
+                    }
+                    return true; // Indicates we repaired the filter
+                }
+                return false; // No repair needed
+            }
+
+            applyLowPassFilter() {
+                if (!this.filterSetupComplete) {
+                    this.setupMusicFilter();
+                    // Wait a moment for setup to complete, then try again
+                    this.time.delayedCall(100, () => this.applyLowPassFilter());
+                    return;
+                }
+
+                // Check if music source changed (loop detection)
+                if (this.checkAndRepairMusicFilter()) {
+                    // Filter was repaired and state restored, we're done
+                    return;
+                }
+
+                if (this.isFilterActive || !this.directGainNode || !this.filterGainNode) {
+                    return;
+                }
+
+                try {
+                    // Smooth crossfade to filtered sound (200ms transition)
+                    const fadeTime = 0.2;
+                    const now = this.sound.context.currentTime;
+
+                    // Fade out direct path
+                    this.directGainNode.gain.cancelScheduledValues(now);
+                    this.directGainNode.gain.setValueAtTime(this.directGainNode.gain.value, now);
+                    this.directGainNode.gain.linearRampToValueAtTime(0.0, now + fadeTime);
+
+                    // Fade in filtered path  
+                    this.filterGainNode.gain.cancelScheduledValues(now);
+                    this.filterGainNode.gain.setValueAtTime(this.filterGainNode.gain.value, now);
+                    this.filterGainNode.gain.linearRampToValueAtTime(0.8, now + fadeTime); // Slightly quieter for more dramatic effect
+
+                    this.isFilterActive = true;
+                    console.log('🔇 Applied low pass filter - music muted');
+                } catch (error) {
+                    console.error('Failed to apply low pass filter:', error);
+                }
+            }
+
+            removeLowPassFilter() {
+                if (!this.isFilterActive || !this.directGainNode || !this.filterGainNode) {
+                    return;
+                }
+
+                // Check if music source changed (loop detection)
+                if (this.checkAndRepairMusicFilter()) {
+                    // Filter was repaired, but we want clear audio, so fix the state
+                    this.directGainNode.gain.value = 1.0;
+                    this.filterGainNode.gain.value = 0.0;
+                    this.isFilterActive = false;
+                    console.log('🔊 Restored clear audio after source change');
+                    return;
+                }
+
+                try {
+                    // Smooth crossfade back to direct sound (200ms transition)
+                    const fadeTime = 0.2;
+                    const now = this.sound.context.currentTime;
+
+                    // Fade in direct path
+                    this.directGainNode.gain.cancelScheduledValues(now);
+                    this.directGainNode.gain.setValueAtTime(this.directGainNode.gain.value, now);
+                    this.directGainNode.gain.linearRampToValueAtTime(1.0, now + fadeTime);
+
+                    // Fade out filtered path
+                    this.filterGainNode.gain.cancelScheduledValues(now);
+                    this.filterGainNode.gain.setValueAtTime(this.filterGainNode.gain.value, now);
+                    this.filterGainNode.gain.linearRampToValueAtTime(0.0, now + fadeTime);
+
+                    this.isFilterActive = false;
+                    console.log('🔊 Removed low pass filter - music clear');
+                } catch (error) {
+                    console.error('Failed to remove low pass filter:', error);
+                }
+            }
+
+            initializeCloudSystem() {
+                // Pre-generate cloud data using a 2D grid system
+                // This ensures clouds everywhere the player might go
+                console.log('Initializing 2D grid-based cloud system...');
+
+                // Create a pool of cloud sprites that we'll reuse
+                this.clouds = [];
+                for (let i = 0; i < 30; i++) { // Larger pool to prevent exhaustion
+                    const cloudType = i % 2 === 0 ? 'cloud_1' : 'cloud_2';
+                    const cloud = this.add.image(0, 0, cloudType);
+                    cloud.setVisible(false);
+                    cloud.setDepth(10); // Behind game elements but above background
+                    cloud.setAlpha(0.8); // Slightly transparent
+                    this.clouds.push(cloud);
+                }
+
+                // Grid system parameters
+                this.CLOUD_GRID_SIZE = 800; // 800x800 pixel grid cells
+                this.cloudGridData = new Map(); // Stores pre-generated cloud positions by grid key
+            }
+
+            generateCloudDataForGrid(gridX, gridY) {
+                // Generate deterministic cloud positions for a grid cell
+                // Each grid cell is CLOUD_GRID_SIZE x CLOUD_GRID_SIZE pixels
+
+                const centerX = gridX * this.CLOUD_GRID_SIZE;
+                const centerY = gridY * this.CLOUD_GRID_SIZE;
+
+                // Only generate clouds at 100m altitude and above
+                // In the game, higher altitude = lower Y values
+                const minCloudY = this.SEA_LEVEL - (100 * this.PIXELS_PER_METER); // Y at 100m altitude
+                if (centerY >= this.SEA_LEVEL) {
+                    return []; // No clouds at or below sea level
+                }
+
+                // Use grid coordinates as seed for deterministic randomness
+                const seed = Math.abs((gridX * 73 + gridY * 151) * 12347); // Better seed distribution
+                const pseudoRandom = (s) => {
+                    const x = Math.sin(s) * 10000;
+                    return x - Math.floor(x);
+                };
+
+                const clouds = [];
+
+                // 1-2 clouds per grid cell for good density without overkill
+                const numClouds = Math.floor(pseudoRandom(seed)) + 1;
+
+                for (let i = 0; i < numClouds; i++) {
+                    const cloudSeed = seed + i * 2137; // Better seed spacing
+
+                    // Position within the grid cell with some overlap into adjacent cells
+                    const x = centerX + (pseudoRandom(cloudSeed) - 0.5) * this.CLOUD_GRID_SIZE * 1.2;
+                    const y = centerY + (pseudoRandom(cloudSeed + 1) - 0.5) * this.CLOUD_GRID_SIZE * 1.2;
+
+                    // Better cloud type selection to ensure both types appear
+                    const cloudType = pseudoRandom(cloudSeed + 2) > 0.5 ? 'cloud_1' : 'cloud_2';
+
+                    // Ensure proper scale range 0.2-0.6
+                    const scaleRandom = pseudoRandom(cloudSeed + 3);
+                    const finalScale = 0.2 + (scaleRandom * 0.4);
+
+                    clouds.push({
+                        x: x,
+                        y: y,
+                        type: cloudType,
+                        scale: finalScale
+                    });
+                }
+
+                return clouds;
+            }
+
+            updateClouds() {
+                // Only update clouds periodically for performance
+                if (this.time.now - this.lastCloudCheck < this.cloudCheckInterval) {
+                    return;
+                }
+                this.lastCloudCheck = this.time.now;
+
+                // Get current camera bounds with buffer
+                const camera = this.cameras.main;
+                const buffer = 1200; // Buffer for smooth appearance/disappearance
+                const viewTop = camera.scrollY - buffer;
+                const viewBottom = camera.scrollY + camera.height + buffer;
+                const viewLeft = camera.scrollX - buffer;
+                const viewRight = camera.scrollX + camera.width + buffer;
+
+                // Hide all clouds first
+                this.clouds.forEach(cloud => cloud.setVisible(false));
+
+                // Calculate which grid cells are visible
+                const gridLeft = Math.floor(viewLeft / this.CLOUD_GRID_SIZE);
+                const gridRight = Math.floor(viewRight / this.CLOUD_GRID_SIZE);
+                const gridTop = Math.floor(viewTop / this.CLOUD_GRID_SIZE);
+                const gridBottom = Math.floor(viewBottom / this.CLOUD_GRID_SIZE);
+
+                // Collect all visible clouds with distance to camera center
+                const cameraX = camera.scrollX + camera.width / 2;
+                const cameraY = camera.scrollY + camera.height / 2;
+                const visibleClouds = [];
+
+                // Generate and collect clouds for visible grid cells
+                for (let gridY = gridTop; gridY <= gridBottom; gridY++) {
+                    for (let gridX = gridLeft; gridX <= gridRight; gridX++) {
+
+                        // Create unique key for this grid cell
+                        const gridKey = `${gridX},${gridY}`;
+
+                        // Get or generate cloud data for this grid cell
+                        if (!this.cloudGridData.has(gridKey)) {
+                            this.cloudGridData.set(gridKey, this.generateCloudDataForGrid(gridX, gridY));
+                        }
+
+                        const gridCloudData = this.cloudGridData.get(gridKey);
+
+                        for (const cloudData of gridCloudData) {
+                            // Check if cloud is within view bounds
+                            if (cloudData.x >= viewLeft && cloudData.x <= viewRight &&
+                                cloudData.y >= viewTop && cloudData.y <= viewBottom) {
+
+                                // Calculate distance to camera center for prioritization
+                                const distance = Math.sqrt(
+                                    Math.pow(cloudData.x - cameraX, 2) +
+                                    Math.pow(cloudData.y - cameraY, 2)
+                                );
+
+                                visibleClouds.push({
+                                    ...cloudData,
+                                    distance: distance
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Sort clouds by distance and take only the closest ones that fit in our pool
+                visibleClouds.sort((a, b) => a.distance - b.distance);
+                const cloudsToShow = visibleClouds.slice(0, this.clouds.length);
+
+                // Show the prioritized clouds
+                cloudsToShow.forEach((cloudData, index) => {
+                    const cloud = this.clouds[index];
+                    cloud.setTexture(cloudData.type);
+                    cloud.setPosition(cloudData.x, cloudData.y);
+                    cloud.setScale(cloudData.scale);
+                    cloud.setVisible(true);
+                });
+
+                // Clean up old cloud data to prevent memory buildup
+                if (this.cloudGridData.size > 100) {
+                    const currentGridX = Math.floor(this.ship.x / this.CLOUD_GRID_SIZE);
+                    const currentGridY = Math.floor(this.ship.y / this.CLOUD_GRID_SIZE);
+
+                    for (const [gridKey] of this.cloudGridData) {
+                        const [x, y] = gridKey.split(',').map(Number);
+                        const distance = Math.abs(x - currentGridX) + Math.abs(y - currentGridY);
+                        if (distance > 20) { // Keep grid cells within 20 cells of player
+                            this.cloudGridData.delete(gridKey);
+                        }
+                    }
+                }
+            }
+
+            createBackgroundElements() {
+                // Create smaller sea - half height starting at SEA_LEVEL
+                // Sea top at SEA_LEVEL (1400), height 450px, so center at SEA_LEVEL + 225
+                this.sea = this.add.rectangle(0, this.SEA_LEVEL + 225, 20000, 450, 0x3498db);
+                this.backgroundRects.push(this.sea);
+                console.log('Created half-height sea starting at original SEA_LEVEL');
+            }
+
+            updateDynamicBackground() {
+                // Only update background periodically for performance
+                if (this.time.now - this.lastBackgroundUpdate < this.backgroundUpdateInterval) {
+                    return;
+                }
+                this.lastBackgroundUpdate = this.time.now;
+
+                // No need to create additional sky rectangles - camera background color handles infinite sky
+                // Only need to manage sea element positioning if camera goes very wide
+                const camera = this.cameras.main;
+                const cameraX = camera.scrollX + camera.width / 2;
+
+                // Reposition sea element to follow camera horizontally if needed
+                if (Math.abs(this.sea.x - cameraX) > 5000) {
+                    this.sea.x = cameraX;
+                    console.log(`Repositioned sea element to follow camera at x: ${cameraX}`);
+                }
+            }
+
+            hasCannonballInRightmostSlot() {
+                return this.cannonballSlots[3]; // Rightmost slot is index 3
+            }
+
+            getTotalCannonballs() {
+                return this.cannonballSlots.filter(slot => slot).length;
+            }
+
+            isSuperShotReady() {
+                // Super Shot is ready based on quest completion or first shot
+                return this.superShotReady;
+            }
+
+            startNewQuest() {
+                // Select a random flag type for the new quest
+                const flagTypes = ['flag_milady', 'flag_bayc', 'flag_noun', 'flag_doodle'];
+                this.questTargetFlag = Phaser.Utils.Array.GetRandom(flagTypes);
+
+                // Calculate target count: 4, 8, 16, 32, etc.
+                this.questTargetCount = 4; //* Math.pow(2, this.questLevel - 1);
+                this.questCurrentCount = 0;
+
+                console.log(`🎯 NEW QUEST: Collect ${this.questTargetCount} ${this.questTargetFlag} flags (Quest Level ${this.questLevel})`);
+
+                // Update UI - texture change maintains the display size
+                this.questFlagIcon.setTexture(this.questTargetFlag);
+                this.questFlagIcon.setVisible(true);
+
+                this.questCountText.setText(this.questTargetCount.toString());
+                this.questCountText.setVisible(true);
+
+                this.questLevel++;
+            }
+
+            updateQuestProgress(flagType) {
+                // Only count if it matches our target and we have an active quest
+                if (this.questTargetFlag && flagType === this.questTargetFlag) {
+                    this.questCurrentCount++;
+                    const remaining = this.questTargetCount - this.questCurrentCount;
+
+                    console.log(`🎯 Quest progress: ${this.questCurrentCount}/${this.questTargetCount} ${flagType} collected`);
+
+                    // Visual feedback - use the correct base scales
+                    const targetFlagScale = this.questFlagBaseScale * 1.4;
+                    const targetCountScale = this.questCountBaseScale * 1.4;
+
+                    this.tweens.add({
+                        targets: this.questFlagIcon,
+                        scaleX: targetFlagScale,
+                        scaleY: targetFlagScale,
+                        duration: 200,
+                        ease: 'Back.easeOut',
+                        yoyo: true
+                    });
+
+                    this.tweens.add({
+                        targets: this.questCountText,
+                        scaleX: targetCountScale,
+                        scaleY: targetCountScale,
+                        duration: 200,
+                        ease: 'Back.easeOut',
+                        yoyo: true
+                    });
+
+                    // Update UI
+                    this.questCountText.setText(remaining.toString());
+
+                    // Check if quest is complete
+                    if (remaining <= 0) {
+                        console.log(`🚀 QUEST COMPLETE! Super Shot unlocked!`);
+                        this.superShotReady = true;
+
+                        // Immediately start next quest
+                        this.startNewQuest();
+                    }
+                }
+            }
+
+            showHelpPopup() {
+                if (this.gameState !== 'playing') return;
+
+                console.log('Showing help popup - pausing all game logic');
+
+                // Set help state and pause physics
+                this.gameState = 'help';
+
+                // Pause physics world to stop all movement
+                this.physics.world.pause();
+
+                // Store and pause all tweens
+                this.tweens.pauseAll();
+
+                // Create help popup background - 2:3 ratio
+                this.helpPopupBG = this.add.rectangle(450, 800, 720, 1180, 0x2c3e50);
+                this.helpPopupBG.setScrollFactor(0);
+                this.helpPopupBG.setDepth(2000);
+                this.helpPopupBG.setStrokeStyle(4, 0xffffff);
+                this.helpPopupBG.setInteractive();
+
+                // Create help title - bigger and better positioned
+                this.helpTitle = this.add.text(450, 350, 'HOW TO PLAY', {
+                    fontSize: '64px',
+                    fill: '#ffffff',
+                    fontWeight: 'bold',
+                    align: 'center'
+                }).setOrigin(0.5);
+                this.helpTitle.setScrollFactor(0);
+                this.helpTitle.setDepth(2001);
+
+                // Create help text - left aligned and vertically centered
+                const helpText = `• tap to shoot in that direction
+
+• firing your cannon propels you
+  in the opposite direction
+
+• grab flying cannonballs
+  for more ammo
+
+• collect the quest targets
+  for a Super Shot
+
+• go as high as possible!
+
+• do NOT press the selfdestruct 
+  button`;
+
+                this.helpContent = this.add.text(450, 700, helpText, {
+                    fontSize: '28px',
+                    fill: '#ecf0f1',
+                    align: 'left',
+                    lineSpacing: 8,
+                    wordWrap: { width: 620 }
+                }).setOrigin(0.5);
+                this.helpContent.setScrollFactor(0);
+                this.helpContent.setDepth(2001);
+
+                // Create self-destruct button - better positioned
+                this.destructButton = this.add.image(450, 1050, 'button_destruct');
+                this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                this.destructButton.setScrollFactor(0);
+                this.destructButton.setDepth(2002); // Higher depth to ensure it's on top
+                this.destructButton.setInteractive();
+                this.destructButton.on('pointerdown', (pointer, localX, localY, event) => {
+                    console.log('Self-destruct activated!');
+                    this.sound.play('tap_button');
+                    event.stopPropagation();
+                    this.hideHelpPopup();
+
+                    // Play explosion sound 1 second after clicking
+                    this.time.delayedCall(1000, () => {
+                        this.sound.play('super_shot');
+                        console.log('💥 Self-destruct explosion!');
+                    });
+
+                    this.gameOver(false); // Don't play water splash for self-destruct
+                });
+
+                // Store help popup elements
+                this.helpPopupElements = [
+                    this.helpPopupBG,
+                    this.helpTitle,
+                    this.helpContent,
+                    this.destructButton
+                ];
+
+                // Click background to close
+                this.helpPopupBG.on('pointerdown', () => {
+                    console.log('Clicked inside popup - closing help');
+                    this.hideHelpPopup();
+                });
+
+                // Add outside click handler with a delay to avoid immediate closure
+                this.time.delayedCall(100, () => {
+                    this.helpOutsideClickHandler = (pointer) => {
+                        // Calculate popup bounds
+                        const popupLeft = 450 - 360; // 450 - (720/2)
+                        const popupRight = 450 + 360; // 450 + (720/2)
+                        const popupTop = 800 - 590; // 800 - (1180/2)
+                        const popupBottom = 800 + 590; // 800 + (1180/2)
+
+                        // Check if click is outside popup bounds
+                        if (pointer.x < popupLeft || pointer.x > popupRight ||
+                            pointer.y < popupTop || pointer.y > popupBottom) {
+                            console.log('Clicked outside popup - closing help');
+                            this.hideHelpPopup();
+                        }
+                    };
+
+                    this.input.on('pointerdown', this.helpOutsideClickHandler);
+                });
+            }
+
+            hideHelpPopup() {
+                console.log('Hiding help popup - resuming all game logic');
+
+                // Remove outside click handler
+                if (this.helpOutsideClickHandler) {
+                    this.input.off('pointerdown', this.helpOutsideClickHandler);
+                    this.helpOutsideClickHandler = null;
+                }
+
+                // Destroy popup elements
+                if (this.helpPopupElements) {
+                    this.helpPopupElements.forEach(element => {
+                        if (element && element.destroy) {
+                            element.destroy();
+                        }
+                    });
+                    this.helpPopupElements = null;
+                }
+
+                // Resume physics and tweens
+                this.physics.world.resume();
+                this.tweens.resumeAll();
+
+                // Resume the game
+                this.gameState = 'playing';
+            }
+
+            showTitleScreen() {
+                this.gameElements.forEach(element => element.setVisible(false));
+
+                // Farcade SDK: Signal that the game is fully loaded and ready to play
+                if (window.FarcadeSDK) {
+                    window.FarcadeSDK.singlePlayer.actions.ready();
+                    console.log('Farcade SDK: Game ready signal sent.');
+                }
+                this.backgroundRects.forEach(rect => rect.setVisible(false));
+                this.uiElements.forEach(element => element.setVisible(false));
+                this.clouds.forEach(cloud => cloud.setVisible(false));
+                this.titleElements.forEach(element => element.setVisible(true));
+                this.gameState = 'menu';
+
+                // Reset positions for animation
+                this.titleImage.setPosition(450, -150);
+                this.playButton.setPosition(450, -200);
+
+                // Remove button interactivity during animation
+                this.playButton.disableInteractive();
+
+                // AESOPNE animation: sharp 0.2s drop, 0.2s bounce, 0.1s settle
+                this.tweens.add({
+                    targets: this.titleImage,
+                    y: 480, // 30% of screen
+                    duration: 200, // 0.2s drop
+                    ease: 'Power2.easeIn',
+                    onComplete: () => {
+                        // Bounce up
+                        this.tweens.add({
+                            targets: this.titleImage,
+                            y: 420, // Bounce up 60px
+                            duration: 100, // 0.1s up
+                            ease: 'Power2.easeOut',
+                            onComplete: () => {
+                                // Settle down
+                                this.tweens.add({
+                                    targets: this.titleImage,
+                                    y: 480, // Back to final position
+                                    duration: 100, // 0.1s settle
+                                    ease: 'Power2.easeIn'
+                                });
+                            }
+                        });
+                    }
+                });
+
+                // START animation: starts after 0.5s (when AESOPNE finishes)
+                this.time.delayedCall(500, () => {
+                    // Start loading music async during the START button animation
+                    this.loadMusicAsync();
+
+                    this.tweens.add({
+                        targets: this.playButton,
+                        y: 1120, // 70% of screen
+                        duration: 200, // 0.2s drop
+                        ease: 'Power2.easeIn',
+                        onComplete: () => {
+                            // Bounce up
+                            this.tweens.add({
+                                targets: this.playButton,
+                                y: 1060, // Bounce up 60px
+                                duration: 100, // 0.1s up
+                                ease: 'Power2.easeOut',
+                                onComplete: () => {
+                                    // Settle down
+                                    this.tweens.add({
+                                        targets: this.playButton,
+                                        y: 1120, // Back to final position
+                                        duration: 100, // 0.1s settle
+                                        ease: 'Power2.easeIn'
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+
+                // Enable button interaction after 1 second total
+                this.time.delayedCall(1000, () => {
+                    if (this.playButton && this.gameState === 'menu') {
+                        this.playButton.setInteractive();
+                    }
+                });
+            }
+
+            showGameScreen() {
+                // No physics bodies to clean up since we're using tweens now
+                this.titleElements.forEach(element => element.setVisible(false));
+                this.gameElements.forEach(element => element.setVisible(true));
+                this.backgroundRects.forEach(rect => rect.setVisible(true));
+                this.uiElements.forEach(element => element.setVisible(true));
+                this.gameState = 'playing';
+            }
+
+            startGame() {
+                console.log('Starting game...');
+                this.showGameScreen();
+
+                // Reset game state
+                this.cannonballSlots = [true, true, true, true]; // All slots start filled
+                this.cannonballSlotFlags = [null, null, null, null]; // No flags initially
+                this.maxHeight = 0;
+                this.currentHeight = 0;
+                this.flyingBallSpawnRate = 300;
+                this.flyingBallTimer = 0;
+                this.cameraFollowing = false;
+                this.gameStartTime = this.time.now;
+                this.initialSpawnCounter = 0;
+                this.highestAltitudeZone = 0;
+                this.cannonCharging = false;
+                this.dormantCannonballs = [];
+                this.isRollingCannonballs = false;
+
+                // Reset Super Shot quest system
+                this.superShotReady = true; // First shot is always a Super Shot
+                this.questTargetFlag = null; // No quest active yet
+                this.questTargetCount = 4;
+                this.questCurrentCount = 0;
+                this.questLevel = 1;
+
+                // Hide quest UI initially
+                this.questFlagIcon.setVisible(false);
+                this.questCountText.setVisible(false);
+
+                // Reset cloud system
+                this.cloudGridData.clear();
+                this.lastCloudCheck = 0;
+
+                // Reset dynamic background system
+                this.lastBackgroundUpdate = 0;
+
+                // Reset cooldown state
+                this.cannonOnCooldown = false;
+                this.cannonCooldownStart = 0;
+
+                // Reset mobile aiming system
+                this.pointerIsDown = false;
+
+                // Reset music system
+                if (this.music && this.music.isPlaying) {
+                    this.music.stop();
+                }
+                this.removeLowPassFilter(); // Clean up any active filter
+                this.filterSetupComplete = false; // Reset filter setup
+                this.originalMusicSource = null; // Reset source tracking
+                this.musicStarted = false;
+                this.isAscending = false;
+                this.wasAscending = false;
+
+                // Reset ship position and physics
+                this.ship.setPosition(this.ship.x, this.SEA_LEVEL);
+                this.ship.setVelocity(0, 0);
+                this.ship.body.setAllowGravity(false);
+                this.ship.body.setImmovable(false);
+
+                // Reset cannon position and angle
+                const initialShipCenterX = this.ship.x;
+                const initialShipCenterY = this.ship.y;
+                this.cannon.x = initialShipCenterX;
+                this.cannon.y = initialShipCenterY + 80;
+                this.cannonAngle = Math.PI / 2;
+                this.cannon.setRotation(this.cannonAngle);
+
+                // Clear projectiles
+                this.flyingBalls.clear(true, true);
+                this.cannonballProjectiles.clear(true, true);
+
+                // Camera follows ship with instant following
+                this.cameras.main.setZoom(1);
+                this.cameras.main.startFollow(this.ship, true, 1, 0);
+                this.cameras.main.scrollY = this.SEA_LEVEL - 1025; // Show more sky (was -800)
+
+                console.log('Using instant camera following (lerp=1) to eliminate interpolation lag');
+
+                // Spawn initial cannonballs
+                this.spawnInitialCannonballs();
+
+                // Update UI
+                this.updateCannonballUI();
+                this.updateHeightDisplay();
+
+                console.log('Game started - Ship floating at sea level:', this.ship.x, this.ship.y);
+            }
+
+            updateCannonAngle() {
+                if (this.gameState !== 'playing') return;
+
+                const cannonX = this.cannon.x;
+                const cannonY = this.cannon.y;
+
+                // Convert screen coordinates to world coordinates
+                const camera = this.cameras.main;
+                const worldPointerX = this.lastPointerPosition.x + camera.scrollX;
+                const worldPointerY = this.lastPointerPosition.y + camera.scrollY;
+
+                this.cannonAngle = Phaser.Math.Angle.Between(cannonX, cannonY, worldPointerX, worldPointerY);
+
+                // Limit cannon to 180° downward arc
+                if (this.cannonAngle < 0) {
+                    this.cannonAngle = 0;
+                }
+                if (this.cannonAngle > Math.PI) {
+                    this.cannonAngle = Math.PI;
+                }
+
+                this.cannon.setRotation(this.cannonAngle + Math.PI / 2); // Fixed rotation
+            }
+
+            startCannonCharge() {
+                if (!this.hasCannonballInRightmostSlot() || this.cannonOnCooldown || this.cannonCharging || this.isRollingCannonballs) {
+                    return;
+                }
+
+                console.log(`Starting cannon charge... Will fire in ${this.CANNON_CHARGE_TIME}ms`);
+                this.sound.play('rolling_ball');
+                this.cannonCharging = true;
+                this.cannonChargeStart = this.time.now;
+
+                this.chargeTimer = this.time.delayedCall(this.CANNON_CHARGE_TIME, () => {
+                    if (this.cannonCharging && this.gameState === 'playing') {
+                        this.fireCannon();
+                    }
+                });
+            }
+
+            fireCannon() {
+                if (!this.hasCannonballInRightmostSlot()) {
+                    return;
+                }
+
+                // Check if this is a Super Shot!
+                const isSuperShot = this.isSuperShotReady();
+                const cannonPower = isSuperShot ? this.CANNON_POWER * 2 : this.CANNON_POWER;
+
+                if (isSuperShot) {
+                    console.log(`💥 SUPER SHOT FIRED! Using ${cannonPower} power!`);
+                    this.sound.play('super_shot');
+                    this.superShotReady = false; // Consume the Super Shot
+
+                    // If this was the first shot, start the quest system
+                    if (!this.questTargetFlag) {
+                        this.startNewQuest();
+                    }
+                } else {
+                    console.log(`BOOM! Firing cannon with power ${cannonPower}`);
+                    this.sound.play('cannon_shot');
+                }
+
+                console.log(`Before firing, slots:`, [...this.cannonballSlots]);
+
+                // Reset charging state
+                this.cannonCharging = false;
+                if (this.chargeTimer) {
+                    this.chargeTimer.destroy();
+                    this.chargeTimer = null;
+                }
+
+                // Start cooldown
+                this.cannonOnCooldown = true;
+                this.cannonCooldownStart = this.time.now;
+                this.isRollingCannonballs = true;
+
+                // Reset cannon visual
+                this.cannon.setTint(0xffffff);
+
+                // STEP 1: Calculate which balls will move and store their current visual positions
+                const ballMovements = [];
+                for (let i = 0; i < 3; i++) { // Check slots 0,1,2
+                    if (this.cannonballSlots[i]) {
+                        // This ball will move from slot i to slot i+1
+                        const currentX = this.cannonballUI[i].x;
+                        const targetX = this.cannonballSlotPositions[i + 1];
+                        ballMovements.push({
+                            fromSlot: i,
+                            toSlot: i + 1,
+                            currentX: currentX,
+                            targetX: targetX
+                        });
+                    }
+                }
+
+                console.log(`Ball movements:`, ballMovements);
+
+                // STEP 2: Update logical state immediately - roll balls AND flags right, clear rightmost
+                const newSlots = [false, false, false, false];
+                const newFlags = [null, null, null, null];
+
+                for (let i = 0; i < 3; i++) {
+                    if (this.cannonballSlots[i]) {
+                        newSlots[i + 1] = true;
+                        newFlags[i + 1] = this.cannonballSlotFlags[i]; // Move flag with ball
+                    }
+                }
+
+                this.cannonballSlots = newSlots;
+                this.cannonballSlotFlags = newFlags;
+
+                console.log(`After firing, slots:`, newSlots);
+                console.log(`After firing, flags:`, newFlags);
+
+                // STEP 3: Update UI immediately to show fired slot as gray immediately
+                this.updateCannonballUI();
+
+                // Enable gravity on first shot
+                if (!this.ship.body.allowGravity) {
+                    this.ship.body.setAllowGravity(true);
+                    this.ship.body.setGravityY(this.GRAVITY);
+                    console.log('Gravity enabled for ship');
+                }
+
+                // Create visual projectile at cannon position
+                const projectile = this.add.image(this.cannon.x, this.cannon.y, 'cannonball');
+                projectile.setDisplaySize(80, 80);
+
+                this.physics.add.existing(projectile);
+                this.cannonballProjectiles.add(projectile);
+
+                // Fire projectile in cannon direction
+                const projectileSpeed = 1600;
+                const projectileVelX = Math.cos(this.cannonAngle) * projectileSpeed;
+                const projectileVelY = Math.sin(this.cannonAngle) * projectileSpeed;
+                projectile.body.setVelocity(projectileVelX, projectileVelY);
+                projectile.body.setGravityY(this.GRAVITY * 0.5);
+
+                // Launch ship in opposite direction
+                const velocityX = -Math.cos(this.cannonAngle) * cannonPower;
+                const velocityY = -Math.sin(this.cannonAngle) * cannonPower;
+
+                this.ship.setVelocity(velocityX, velocityY);
+
+                // Start music on first shot (if loaded)
+                if (!this.musicStarted && this.music) {
+                    this.music.play();
+                    this.musicStarted = true;
+                    this.isAscending = true;
+                    this.wasAscending = true;
+                    console.log('🎵 Music started - player is ascending!');
+
+                    // Set up the filter chain after a brief delay to ensure music is playing
+                    this.time.delayedCall(200, () => this.setupMusicFilter());
+                } else if (!this.musicStarted && !this.music) {
+                    console.log('🎵 Music not loaded yet - will start when available');
+                }
+
+                // STEP 4: Now animate the visual rolling on top of the correct final state
+                ballMovements.forEach(movement => {
+                    const { fromSlot, toSlot, currentX, targetX } = movement;
+                    const ball = this.cannonballUI[toSlot]; // Ball is now logically at toSlot
+                    const flag = this.cannonballUIFlags[toSlot]; // Flag is now logically at toSlot
+
+                    // Temporarily put ball back at the old position for animation
+                    ball.x = currentX;
+
+                    // If there's a flag, put it back at old position too
+                    if (this.cannonballSlotFlags[toSlot]) {
+                        flag.x = currentX;
+                    }
+
+                    console.log(`Animating ball from slot ${fromSlot} to ${toSlot}, x: ${currentX} -> ${targetX}`);
+
+                    // Animate ball to new position
+                    this.tweens.add({
+                        targets: ball,
+                        x: targetX,
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+
+                    // Animate flag to new position (if exists)
+                    if (this.cannonballSlotFlags[toSlot]) {
+                        this.tweens.add({
+                            targets: flag,
+                            x: targetX,
+                            duration: this.CANNON_COOLDOWN_TIME,
+                            ease: 'Power2.easeOut'
+                        });
+
+                        // Add rotation to flag too!
+                        this.tweens.add({
+                            targets: flag,
+                            rotation: flag.rotation + Math.PI * 4,
+                            duration: this.CANNON_COOLDOWN_TIME,
+                            ease: 'Power2.easeOut'
+                        });
+                    }
+
+                    // Add rotation to ball
+                    this.tweens.add({
+                        targets: ball,
+                        rotation: ball.rotation + Math.PI * 4,
+                        duration: this.CANNON_COOLDOWN_TIME,
+                        ease: 'Power2.easeOut'
+                    });
+                });
+
+                // End rolling when animation completes
+                this.time.delayedCall(this.CANNON_COOLDOWN_TIME, () => {
+                    this.isRollingCannonballs = false;
+                    this.updateCannonballUI(); // Final cleanup
+                });
+
+                console.log(`FIRED! Ship velocity: X=${velocityX.toFixed(0)}, Y=${velocityY.toFixed(0)}`);
+            }
+
+            spawnInitialCannonballs() {
+                for (let i = 0; i < 15; i++) {
+                    const x = this.ship.x + Phaser.Math.Between(-1000, 1000);
+                    const y = this.ship.y - Phaser.Math.Between(50, 500);
+                    this.createFlyingBall(x, y);
+                }
+                console.log('Spawned 15 initial cannonballs with wide spread');
+            }
+
+            checkAltitudeSpawning() {
+                const currentAltitude = this.currentHeight;
+                const currentZone = Math.floor(currentAltitude / 50);
+
+                if (currentZone > this.highestAltitudeZone) {
+                    console.log(`Reached ${currentZone * 50}m altitude - spawning cannonballs at ${(currentZone + 1) * 50}m`);
+
+                    const spawnAltitude = (currentZone + 1) * 50;
+                    const spawnY = this.SEA_LEVEL - (spawnAltitude * this.PIXELS_PER_METER);
+
+                    const baseCannonballs = 8;
+                    const altitudeReduction = Math.floor(currentZone / 4);
+                    const cannonballCount = Math.max(2, baseCannonballs - altitudeReduction);
+
+                    console.log(`Spawning ${cannonballCount} cannonballs`);
+
+                    for (let i = 0; i < cannonballCount; i++) {
+                        const spawnX = this.ship.x + Phaser.Math.Between(-1000, 1000);
+                        const spawnYVaried = spawnY + Phaser.Math.Between(-1000, -50);
+                        this.createFlyingBall(spawnX, spawnYVaried);
+                    }
+
+                    this.highestAltitudeZone = currentZone;
+                }
+            }
+
+            checkDormantCannonballs() {
+                this.dormantCannonballs = this.dormantCannonballs.filter((dormant, index) => {
+                    const distance = Phaser.Math.Distance.Between(dormant.x, dormant.y, this.ship.x, this.ship.y);
+                    if (distance < this.RESPAWN_DISTANCE) {
+                        this.createFlyingBall(dormant.x, dormant.y, dormant.flagType);
+                        console.log(`Respawned dormant cannonball with ${dormant.flagType} at altitude ${dormant.altitude}m`);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            createFlyingBall(x, y, flagType = null) {
+                const flyingBall = this.add.image(x, y, 'cannonball');
+                flyingBall.setDisplaySize(this.FLYING_BALL_SIZE, this.FLYING_BALL_SIZE);
+
+                this.physics.add.existing(flyingBall);
+                this.flyingBalls.add(flyingBall);
+
+                // Create wings with proper pivot setup
+                const leftWing = this.add.image(x, y, 'wing');
+                leftWing.setDisplaySize(80, 40);
+                leftWing.setFlipX(true);
+                leftWing.setOrigin(0.9, 0.6); // Right edge as pivot point
+
+                const rightWing = this.add.image(x, y, 'wing');
+                rightWing.setDisplaySize(80, 40);
+                rightWing.setOrigin(0.1, 0.6); // Left edge as pivot point
+
+                // Create flag - random type if not specified
+                const flagTypes = ['flag_milady', 'flag_bayc', 'flag_noun', 'flag_doodle'];
+                const selectedFlagType = flagType || Phaser.Utils.Array.GetRandom(flagTypes);
+
+                const flag = this.add.image(x, y, selectedFlagType);
+                flag.setDisplaySize(64, 64);
+                flag.setOrigin(0.5, 0.5);
+
+                // Generate randomized flapping parameters for variation
+                const leftWingUpAngle = Phaser.Math.DegToRad(Phaser.Math.Between(30, 60));
+                const leftWingDownAngle = Phaser.Math.DegToRad(Phaser.Math.Between(-60, -30));
+                const rightWingUpAngle = Phaser.Math.DegToRad(Phaser.Math.Between(-60, -30));
+                const rightWingDownAngle = Phaser.Math.DegToRad(Phaser.Math.Between(30, 60));
+
+                const flapDuration = Phaser.Math.Between(300, 500);
+                const phaseOffset = Phaser.Math.Between(0, flapDuration);
+
+                // Create rotation-based wing animation
+                this.tweens.add({
+                    targets: leftWing,
+                    rotation: leftWingDownAngle,
+                    duration: flapDuration,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut',
+                    delay: phaseOffset
+                });
+
+                this.tweens.add({
+                    targets: rightWing,
+                    rotation: rightWingDownAngle,
+                    duration: flapDuration,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut',
+                    delay: phaseOffset
+                });
+
+                // Set initial wing angles
+                leftWing.setRotation(leftWingUpAngle);
+                rightWing.setRotation(rightWingUpAngle);
+
+                // Attach components to the flying ball
+                flyingBall.leftWing = leftWing;
+                flyingBall.rightWing = rightWing;
+                flyingBall.flag = flag;
+                flyingBall.flagType = selectedFlagType; // Store flag type for dormant system
+
+                flyingBall.body.setVelocity(
+                    Phaser.Math.Between(-80, 80),
+                    Phaser.Math.Between(-40, 40)
+                );
+            }
+
+            collectFlyingBall(ship, flyingBall) {
+                const currentCount = this.getTotalCannonballs();
+
+                if (currentCount < 4) {
+                    // Play pickup sound
+                    this.sound.play('ball_pickup');
+
+                    if (this.isRollingCannonballs) {
+                        // During rolling, find the rightmost empty slot in the FINAL locked state
+                        let targetSlot = -1;
+                        for (let i = 3; i >= 0; i--) { // Check from right to left
+                            if (!this.cannonballSlots[i]) {
+                                targetSlot = i;
+                                break;
+                            }
+                        }
+
+                        if (targetSlot !== -1) {
+                            this.cannonballSlots[targetSlot] = true;
+                            this.cannonballSlotFlags[targetSlot] = flyingBall.flagType;
+                            this.updateCannonballUI();
+
+                            console.log(`Collected ball during rolling! Filled rightmost empty slot ${targetSlot} with flag ${flyingBall.flagType}`);
+                        }
+                    } else {
+                        // When not rolling, use full redistribution logic (same as balls)
+                        const newCount = currentCount + 1;
+
+                        console.log(`Collecting ball with flag: ${flyingBall.flagType}. Current count: ${currentCount}, new count: ${newCount}`);
+                        console.log(`Before collection, slots:`, [...this.cannonballSlots]);
+                        console.log(`Before collection, flags:`, [...this.cannonballSlotFlags]);
+
+                        // Step 1: Collect existing flags in their current order
+                        const existingFlags = [];
+                        for (let i = 0; i < 4; i++) {
+                            if (this.cannonballSlots[i]) {
+                                existingFlags.push(this.cannonballSlotFlags[i]);
+                            }
+                        }
+
+                        // Step 2: Add new flag at the end (it will go rightmost)
+                        existingFlags.push(flyingBall.flagType);
+
+                        // Step 3: Clear all and redistribute (SAME as balls)
+                        const newSlots = [false, false, false, false];
+                        const newFlags = [null, null, null, null];
+
+                        for (let i = 0; i < newCount; i++) {
+                            newSlots[3 - i] = true; // Fill rightmost slots first: 3, 2, 1, 0
+                            newFlags[3 - i] = existingFlags[i]; // Assign flags in same order as balls
+                        }
+
+                        // The newly collected ball will be at the leftmost of the filled slots
+                        const newBallSlot = 4 - newCount;
+
+                        this.cannonballSlots = newSlots;
+                        this.cannonballSlotFlags = newFlags;
+                        this.updateCannonballUI();
+
+                        // Apply gold tint to the newly collected ball
+                        const newBall = this.cannonballUI[newBallSlot];
+                        newBall.setTint(0xFFD700);
+
+                        this.tweens.add({
+                            targets: newBall,
+                            tint: 0xffffff,
+                            duration: this.CANNON_COOLDOWN_TIME,
+                            ease: 'Power2.easeOut'
+                        });
+
+                        console.log(`After collection, slots:`, newSlots);
+                        console.log(`After collection, flags:`, newFlags);
+                    }
+
+                    // Update quest progress for any flag collected
+                    this.updateQuestProgress(flyingBall.flagType);
+
+                    // Destroy all components
+                    if (flyingBall.leftWing) flyingBall.leftWing.destroy();
+                    if (flyingBall.rightWing) flyingBall.rightWing.destroy();
+                    if (flyingBall.flag) flyingBall.flag.destroy();
+                    flyingBall.destroy();
+
+                    console.log(`Collected ball! Total: ${this.getTotalCannonballs()}, Rolling: ${this.isRollingCannonballs}`);
+                }
+            }
+
+            updateCannonballUI() {
+                // Gray placeholders are always visible, just update the actual cannonballs and flags
+                for (let i = 0; i < 4; i++) {
+                    const ball = this.cannonballUI[i];
+                    const flag = this.cannonballUIFlags[i];
+
+                    // Ensure ball and flag are at correct position (unless currently animating)
+                    if (!this.isRollingCannonballs) {
+                        ball.x = this.cannonballSlotPositions[i];
+                        ball.rotation = 0; // Reset rotation when not rolling
+                        flag.x = this.cannonballSlotPositions[i];
+                        flag.rotation = 0; // Reset flag rotation too
+                    }
+
+                    // Show/hide actual cannonball based on slot state
+                    if (this.cannonballSlots[i]) {
+                        // Slot has a cannonball - show white cannonball on top of gray placeholder
+                        ball.setVisible(true);
+                        ball.setTint(0xffffff);
+                        ball.setAlpha(1.0);
+
+                        // Show flag if this slot has one
+                        if (this.cannonballSlotFlags[i]) {
+                            flag.setTexture(this.cannonballSlotFlags[i]);
+                            flag.setVisible(true);
+                        } else {
+                            flag.setVisible(false);
+                        }
+                    } else {
+                        // Slot is empty - hide the white cannonball and flag, gray placeholder shows through
+                        ball.setVisible(false);
+                        flag.setVisible(false);
+                    }
+                }
+
+                this.updateCooldownCircles();
+            }
+
+            updateCooldownCircles() {
+                const canFire = !this.cannonCharging && !this.cannonOnCooldown && !this.isRollingCannonballs && this.hasCannonballInRightmostSlot();
+                const isSuperShot = this.isSuperShotReady();
+
+                // Only show cooldown circle on rightmost slot (index 3)
+                for (let i = 0; i < 4; i++) {
+                    const cooldownGraphic = this.cooldownGraphics[i];
+                    cooldownGraphic.clear();
+
+                    // Only show circle on rightmost slot that has a cannonball
+                    if (i === 3 && this.cannonballSlots[i]) {
+                        const x = this.cannonballSlotPositions[i];
+                        const y = 1500;
+                        let radius = this.CANNONBALL_SIZE + 4;
+
+                        // Super Shot pulsing effect!
+                        if (canFire && isSuperShot) {
+                            const pulseTime = this.time.now * 0.008; // Pulse frequency
+                            const pulseScale = 1 + Math.sin(pulseTime) * 0.2; // Scale from 1.0 to 1.2
+                            radius *= pulseScale;
+                        }
+
+                        if (canFire) {
+                            // Full golden circle when ready to fire
+                            const lineWidth = (canFire && isSuperShot) ? 6 : 4; // Thicker line for Super Shot
+                            cooldownGraphic.lineStyle(lineWidth, 0xFFD700);
+                            cooldownGraphic.strokeCircle(x, y, radius);
+                        } else if (this.cannonOnCooldown) {
+                            // Show cooldown progress
+                            const elapsed = this.time.now - this.cannonCooldownStart;
+                            const progress = Math.min(elapsed / this.CANNON_COOLDOWN_TIME, 1);
+
+                            if (progress < 1) {
+                                const startAngle = -Math.PI / 2;
+                                const endAngle = startAngle + (progress * Math.PI * 2);
+
+                                cooldownGraphic.lineStyle(4, 0xFFD700);
+                                cooldownGraphic.beginPath();
+                                cooldownGraphic.arc(x, y, radius, startAngle, endAngle);
+                                cooldownGraphic.strokePath();
+                            } else {
+                                cooldownGraphic.lineStyle(4, 0xFFD700);
+                                cooldownGraphic.strokeCircle(x, y, radius);
+                            }
+                        }
+                    }
+                }
+            }
+
+            updateHeightDisplay() {
+                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
+                const heightAboveSeaInPixels = shipFloatingPosition - this.ship.y;
+                const heightInMeters = Math.max(0, Math.floor(heightAboveSeaInPixels / this.PIXELS_PER_METER));
+
+                this.currentHeight = heightInMeters;
+                this.maxHeight = Math.max(this.maxHeight, heightInMeters);
+                this.heightText.setText(`Height: ${heightInMeters}m`);
+            }
+
+            updateCamera() {
+                if (this.gameState !== 'playing') return;
+
+                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
+                const shipHeightAboveSeaLevel = shipFloatingPosition - this.ship.y;
+
+                // Switch camera following mode based on height
+                if (shipHeightAboveSeaLevel > 200 && !this.cameraFollowing) {
+                    this.cameraFollowing = true;
+                    console.log('Camera now following ship vertically');
+                    // Switch to following both axes instantly
+                    this.cameras.main.setLerp(1, 1);
+
+                } else if (shipHeightAboveSeaLevel < 100 && this.cameraFollowing) {
+                    this.cameraFollowing = false;
+                    console.log('Camera stopped following ship vertically');
+                    // Follow horizontally but not vertically
+                    this.cameras.main.setLerp(1, 0);
+                    // Only set Y position once when transitioning, not every frame
+                    this.cameras.main.scrollY = this.SEA_LEVEL - 1025; // Show more sky (was -800)
+                }
+
+                // Don't constantly override scrollY - let camera system handle it
+            }
+
+            checkGameOver() {
+                if (!this.gameStartTime || (this.time.now - this.gameStartTime < 1000)) {
+                    return;
+                }
+
+                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
+                const shipAtSeaLevel = this.ship.y >= shipFloatingPosition;
+
+                if (shipAtSeaLevel) {
+                    if (this.getTotalCannonballs() <= 0 && this.ship.body.velocity.y >= -50) {
+                        if (!this.gameOverTimer) {
+                            this.gameOverTimer = this.time.now;
+                        } else if (this.time.now - this.gameOverTimer > 1500) {
+                            this.gameOver(true); // Play water splash for natural game over
+                        }
+                    } else {
+                        this.gameOverTimer = null;
+                    }
+
+                    if (this.ship.body.velocity.y > 500) {
+                        this.gameOver(true); // Play water splash for high speed impact
+                    }
+                } else {
+                    this.gameOverTimer = null;
+                }
+            }
+
+            gameOver(playWaterSplash = true) {
+                if (this.gameState === 'gameOver') return;
+
+                this.gameState = 'gameOver';
+                console.log(`Game Over! Max height: ${this.maxHeight}m`);
+
+                // Stop music on game over
+                if (this.music && this.music.isPlaying) {
+                    this.music.stop();
+                    console.log('🎵 Music stopped - game over');
+                }
+                this.removeLowPassFilter(); // Clean up any active filter
+                this.filterSetupComplete = false; // Reset filter setup
+                this.originalMusicSource = null; // Reset source tracking
+
+                // Play water splash sound only if falling back to water (not self-destruct)
+                if (playWaterSplash) {
+                    this.sound.play('water_splash');
+                }
+
+                if (this.maxHeight > this.personalBest) {
+                    this.personalBest = this.maxHeight;
+                    localStorage.setItem('verticalLauncherBest', this.personalBest.toString());
+                    this.personalBestText.setText(`Best: ${this.personalBest}m`);
+                }
+
+                this.ship.setVelocity(0, 0);
+                this.ship.body.setAllowGravity(false);
+
+                // Reset camera following state but don't stop following yet
+                this.cameraFollowing = false;
+
+                this.time.delayedCall(2000, () => {
+                    this.showGameOverScreen();
+                });
+            }
+
+            showGameOverScreen() {
+                // Stop following and return camera to initial position
+                this.cameras.main.stopFollow();
+                this.cameras.main.setScroll(0, this.SEA_LEVEL - 1025); // Show more sky (was -800)
+
+                // Show title elements without animation
+                this.gameElements.forEach(element => element.setVisible(false));
+                this.backgroundRects.forEach(rect => rect.setVisible(false));
+                this.uiElements.forEach(element => element.setVisible(false));
+                this.clouds.forEach(cloud => cloud.setVisible(false));
+                this.titleElements.forEach(element => element.setVisible(true));
+                this.gameState = 'gameOver';
+
+                // Position AESOPNE image higher up for better spacing
+                this.titleImage.setPosition(450, 300);
+                this.titleImage.setVisible(true);
+
+                // Create "It's over..." text with better spacing - 30% bigger
+                this.gameOverText = this.add.text(450, 520, "It's over...", {
+                    fontSize: '64px',
+                    fill: '#e74c3c',
+                    fontWeight: 'bold',
+                    align: 'center'
+                }).setOrigin(0.5);
+                this.gameOverText.setScrollFactor(0);
+                this.gameOverText.setDepth(2001);
+
+                // Create height text with more spacing - 40% bigger
+                const heightText = this.add.text(450, 640, `You went ${this.maxHeight}m high.`, {
+                    fontSize: '50px',
+                    fill: '#ffffff',
+                    fontWeight: 'normal',
+                    align: 'center'
+                }).setOrigin(0.5);
+                heightText.setScrollFactor(0);
+                heightText.setDepth(2001);
+
+                // Calculate distance to moon and create moon text with better spacing - 40% bigger
+                const moonDistance = 384400000; // Distance to moon in meters
+                const remaining = moonDistance - this.maxHeight;
+                const moonText = this.add.text(450, 760, `The Moon is ${remaining.toLocaleString()}m away. 
+                Keep going!`, {
+                    fontSize: '40px',
+                    fill: '#ecf0f1',
+                    fontWeight: 'normal',
+                    align: 'center'
+                }).setOrigin(0.5);
+                moonText.setScrollFactor(0);
+                moonText.setDepth(2001);
+
+                // Position play button at settled position and make it interactive
+                this.playButton.setPosition(450, 1120); // 70% of screen
+                this.playButton.setInteractive();
+
+                // Farcade SDK: Hide our play button and call SDK gameOver after a delay
+                if (window.FarcadeSDK) {
+                    this.playButton.setVisible(false); // Hide our button since Farcade UI takes over
+                    
+                    this.time.delayedCall(1000, () => {
+                        window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
+                        console.log('Farcade SDK: Game over signal sent with score:', this.maxHeight);
+                    });
+                }
+
+                this.playButton.removeAllListeners();
+                this.playButton.on('pointerdown', () => {
+                    this.sound.play('tap_button');
+                    heightText.destroy();
+                    moonText.destroy();
+                    if (this.gameOverText) {
+                        this.gameOverText.destroy();
+                        this.gameOverText = null;
+                    }
+                    this.startGame();
+                });
+            }
+
+            update(time, delta) {
+                if (this.gameState !== 'playing') return;
+
+                // Keep ship floating at sea level if gravity not enabled yet
+                if (!this.ship.body.allowGravity) {
+                    this.ship.setPosition(this.ship.x, this.SEA_LEVEL);
+                    this.ship.setVelocity(0, 0);
+                }
+
+                // Update cooldown state
+                if (this.cannonOnCooldown) {
+                    const elapsed = this.time.now - this.cannonCooldownStart;
+                    if (elapsed >= this.CANNON_COOLDOWN_TIME) {
+                        this.cannonOnCooldown = false;
+                        console.log('Cannon cooldown completed - ready to fire');
+                    }
+                }
+
+                // Position cannon based on ship's physics body position for perfect sync
+                // Use sprite position as fallback if body isn't ready (fixes first shot jerkiness)
+                const shipCenterX = this.ship.body && this.ship.body.x !== undefined ?
+                    this.ship.body.x + this.ship.body.width / 2 : this.ship.x;
+                const shipCenterY = this.ship.body && this.ship.body.y !== undefined ?
+                    this.ship.body.y + this.ship.body.height / 2 : this.ship.y;
+
+                // Calculate ship speed for visual effects
+                const shipSpeed = Math.sqrt(this.ship.body.velocity.x * this.ship.body.velocity.x + this.ship.body.velocity.y * this.ship.body.velocity.y);
+                const maxSpeed = 3000; // Approximate max speed after cannon shot
+                const speedRatio = Math.min(shipSpeed / maxSpeed, 1); // 0 to 1
+
+                // Apply subtle speed-based rotation oscillation to ship
+                if (speedRatio > 0.1) { // Only apply when moving at decent speed
+                    const oscillationTime = this.time.now * 0.01; // Oscillation frequency
+                    const maxRotation = Phaser.Math.DegToRad(10); // Max 10 degrees as requested
+                    const rotationAmount = Math.sin(oscillationTime) * maxRotation * speedRatio;
+                    this.ship.setRotation(rotationAmount);
+                } else {
+                    this.ship.setRotation(0); // No rotation when moving slowly
+                }
+
+                // Handle cannon charging and shaking
+                if (this.cannonCharging) {
+                    const chargeProgress = (this.time.now - this.cannonChargeStart) / this.CANNON_CHARGE_TIME;
+                    const shakeIntensity = Math.min(chargeProgress * 20, 20);
+
+                    this.cannon.x = shipCenterX + (Math.random() - 0.5) * shakeIntensity;
+                    this.cannon.y = shipCenterY + 80 + (Math.random() - 0.5) * shakeIntensity;
+
+                    this.cannon.setTint(0xff4444); // Red during charge
+                } else {
+                    // Add subtle speed-based positional shake to cannon
+                    const shakeAmount = speedRatio * 3; // Very subtle positional shake
+                    const shakeX = (Math.random() - 0.5) * shakeAmount;
+                    const shakeY = (Math.random() - 0.5) * shakeAmount;
+
+                    this.cannon.x = shipCenterX + shakeX;
+                    this.cannon.y = shipCenterY + 80 + shakeY;
+                    this.cannon.setTint(0xffffff); // Normal color
+                }
+
+                // Update cannon angle
+                this.updateCannonAngle();
+
+                // Update wing and flag positions to follow their cannonballs
+                this.flyingBalls.children.entries.forEach(ball => {
+                    if (ball.leftWing) {
+                        ball.leftWing.x = ball.x - 30;
+                        ball.leftWing.y = ball.y;
+                    }
+                    if (ball.rightWing) {
+                        ball.rightWing.x = ball.x + 30;
+                        ball.rightWing.y = ball.y;
+                    }
+                    if (ball.flag) {
+                        ball.flag.x = ball.x;
+                        ball.flag.y = ball.y;
+                    }
+                });
+
+                // Handle space key
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+                    const canFire = this.gameState === 'playing' &&
+                        this.gameStartTime &&
+                        (this.time.now - this.gameStartTime > 500) &&
+                        !this.cannonCharging &&
+                        !this.cannonOnCooldown &&
+                        !this.isRollingCannonballs &&
+                        this.hasCannonballInRightmostSlot();
+
+                    if (canFire) {
+                        this.startCannonCharge();
+                    }
+                }
+
+                // Update music filter based on ascending state
+                if (this.musicStarted && this.music && this.ship.body.allowGravity && this.filterSetupComplete) {
+                    // Player is ascending if Y velocity is negative (up is negative in Phaser)
+                    this.isAscending = this.ship.body.velocity.y < -50; // Small threshold to avoid micro-movements
+
+                    // Only change filter state when ascending state actually changes
+                    if (this.isAscending !== this.wasAscending) {
+                        if (this.isAscending) {
+                            // Started ascending - remove muffled filter for clear music
+                            this.removeLowPassFilter();
+                        } else {
+                            // Stopped ascending - apply muffled filter
+                            this.applyLowPassFilter();
+                        }
+                        this.wasAscending = this.isAscending;
+                    }
+                }
+
+                // Update game state
+                this.updateHeightDisplay();
+                this.updateCamera();
+                this.updateCooldownCircles();
+
+                // Update cloud system
+                this.updateClouds();
+
+                // Update dynamic background system
+                this.updateDynamicBackground();
+
+                // Check for altitude-based spawning
+                this.checkAltitudeSpawning();
+
+                // Check for dormant cannonball respawning
+                this.checkDormantCannonballs();
+
+                // Clean up projectiles
+                this.cannonballProjectiles.children.entries.forEach(projectile => {
+                    const distance = Phaser.Math.Distance.Between(projectile.x, projectile.y, this.ship.x, this.ship.y);
+                    if (distance > 5000) {
+                        projectile.destroy();
+                    }
+                });
+
+                // Clean up flying balls
+                this.flyingBalls.children.entries.forEach(ball => {
+                    const distance = Phaser.Math.Distance.Between(ball.x, ball.y, this.ship.x, this.ship.y);
+                    if (distance > 3000) {
+                        const altitude = Math.floor((this.SEA_LEVEL - ball.y) / this.PIXELS_PER_METER);
+                        this.dormantCannonballs.push({
+                            x: ball.x,
+                            y: ball.y,
+                            altitude: altitude,
+                            flagType: ball.flagType // Store flag type for later respawn
+                        });
+
+                        console.log(`Stored dormant cannonball with ${ball.flagType} at altitude ${altitude}m (total dormant: ${this.dormantCannonballs.length})`);
+
+                        if (ball.leftWing) ball.leftWing.destroy();
+                        if (ball.rightWing) ball.rightWing.destroy();
+                        if (ball.flag) ball.flag.destroy();
+                        ball.destroy();
+                    }
+                });
+
+                // Only check game over after gravity is enabled
+                if (this.ship.body.allowGravity) {
+                    this.checkGameOver();
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 900,
+            height: 1600,
+            parent: 'game-container',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false
+                }
+            },
+            scene: VerticalLauncher,
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            }
+        };
+
+        const game = new Phaser.Game(config);
+
+        // Farcade SDK: Register event handlers for 'play_again' and 'toggle_mute'
+        if (window.FarcadeSDK) {
+            // Handle play again requests from Farcade
+            window.FarcadeSDK.on('play_again', () => {
+                console.log('Farcade SDK: Play again requested.');
+                const activeScene = game.scene.getScene('VerticalLauncher');
+                if (activeScene && activeScene.startGame) {
+                    activeScene.startGame();
+                    console.log('Farcade SDK: Game restarted.');
+                } else {
+                    console.warn('Farcade SDK: Could not find active scene to restart game.');
+                }
+            });
+
+            // Handle mute/unmute requests from Farcade
+            window.FarcadeSDK.on('toggle_mute', (data) => {
+                console.log('Farcade SDK: Mute toggle requested, isMuted:', data.isMuted);
+                // Use Phaser's global sound manager to mute/unmute all audio
+                game.sound.mute = data.isMuted;
+                console.log('Farcade SDK: All game audio mute state set to:', data.isMuted);
+            });
+
+            console.log('Farcade SDK: Event handlers registered.');
+        }
+    </script>
+</body>
+
+</html>
