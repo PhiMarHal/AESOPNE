@@ -114,6 +114,11 @@
                 this.originalMusicSource = null;
                 this.originalMusicSource = null; // Track the original source
 
+                // Game over text elements - initialize as null for cleanup
+                this.gameOverHeightText = null;
+                this.gameOverMoonText = null;
+                this.gameOverText = null;
+
                 console.log('Vertical Launcher initialized with slot-based cannonball system');
             }
 
@@ -165,6 +170,11 @@
 
                 // Load personal best
                 this.personalBest = parseInt(localStorage.getItem('verticalLauncherBest') || '0');
+
+                // Initialize game over text elements as null for cleanup
+                this.gameOverHeightText = null;
+                this.gameOverMoonText = null;
+                this.gameOverText = null;
 
                 // Initialize all groups and variables first
                 this.flyingBalls = this.physics.add.group();
@@ -1095,6 +1105,21 @@
 
             startGame() {
                 console.log('Starting game...');
+
+                // Clean up any lingering game over screen elements
+                if (this.gameOverHeightText) {
+                    this.gameOverHeightText.destroy();
+                    this.gameOverHeightText = null;
+                }
+                if (this.gameOverMoonText) {
+                    this.gameOverMoonText.destroy();
+                    this.gameOverMoonText = null;
+                }
+                if (this.gameOverText) {
+                    this.gameOverText.destroy();
+                    this.gameOverText = null;
+                }
+
                 this.showGameScreen();
 
                 // Reset game state
@@ -1821,28 +1846,28 @@
                 this.gameOverText.setScrollFactor(0);
                 this.gameOverText.setDepth(2001);
 
-                // Create height text with more spacing - 40% bigger
-                const heightText = this.add.text(450, 640, `You went ${this.maxHeight}m high.`, {
+                // Create height text with more spacing - 40% bigger - NOW AS INSTANCE VARIABLE
+                this.gameOverHeightText = this.add.text(450, 640, `You went ${this.maxHeight}m high.`, {
                     fontSize: '50px',
                     fill: '#ffffff',
                     fontWeight: 'normal',
                     align: 'center'
                 }).setOrigin(0.5);
-                heightText.setScrollFactor(0);
-                heightText.setDepth(2001);
+                this.gameOverHeightText.setScrollFactor(0);
+                this.gameOverHeightText.setDepth(2001);
 
-                // Calculate distance to moon and create moon text with better spacing - 40% bigger
+                // Calculate distance to moon and create moon text with better spacing - 40% bigger - NOW AS INSTANCE VARIABLE
                 const moonDistance = 384400000; // Distance to moon in meters
                 const remaining = moonDistance - this.maxHeight;
-                const moonText = this.add.text(450, 760, `The Moon is ${remaining.toLocaleString()}m away. 
+                this.gameOverMoonText = this.add.text(450, 760, `The Moon is ${remaining.toLocaleString()}m away. 
                 Keep going!`, {
                     fontSize: '40px',
                     fill: '#ecf0f1',
                     fontWeight: 'normal',
                     align: 'center'
                 }).setOrigin(0.5);
-                moonText.setScrollFactor(0);
-                moonText.setDepth(2001);
+                this.gameOverMoonText.setScrollFactor(0);
+                this.gameOverMoonText.setDepth(2001);
 
                 // Position play button at settled position and make it interactive
                 this.playButton.setPosition(450, 1120); // 70% of screen
@@ -1861,12 +1886,6 @@
                 this.playButton.removeAllListeners();
                 this.playButton.on('pointerdown', () => {
                     this.sound.play('tap_button');
-                    heightText.destroy();
-                    moonText.destroy();
-                    if (this.gameOverText) {
-                        this.gameOverText.destroy();
-                        this.gameOverText = null;
-                    }
                     this.startGame();
                 });
             }
