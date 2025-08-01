@@ -143,6 +143,7 @@
                 this.load.image('flag_noun', ASSET_BASE + '/assets/flag_noun.png');
                 this.load.image('flag_doodle', ASSET_BASE + '/assets/flag_doodle.png');
                 this.load.image('title_aesopne', ASSET_BASE + '/assets/title_aesopne.png');
+                this.load.image('explosion', ASSET_BASE + '/assets/explosion.png');
 
                 // Sounds
                 this.load.audio('rolling_ball', ASSET_BASE + '/assets/rolling_ball.mp3');
@@ -936,10 +937,42 @@
                     event.stopPropagation();
                     this.hideHelpPopup();
 
-                    // Play explosion sound 1 second after clicking
-                    this.time.delayedCall(1000, () => {
-                        this.sound.play('super_shot');
-                        console.log('💥 Self-destruct explosion!');
+                    // Play explosion sound immediately  
+                    this.sound.play('super_shot');
+
+                    // Shake ship and create explosions
+                    const originalX = this.ship.x;
+                    const originalY = this.ship.y;
+
+                    // Simple ship shaking
+                    const shakeTimer = this.time.addEvent({
+                        delay: 50,
+                        repeat: 20,
+                        callback: () => {
+                            this.ship.x = originalX + Phaser.Math.Between(-25, 25);
+                            this.ship.y = originalY + Phaser.Math.Between(-25, 25);
+                        }
+                    });
+
+                    // Three explosions
+                    [200, 400, 600, 800].forEach((delay) => {
+                        this.time.delayedCall(delay, () => {
+                            this.sound.play('super_shot');
+                            const explosion = this.add.image(
+                                originalX + Phaser.Math.Between(-150, 150),
+                                originalY + Phaser.Math.Between(-150, 150),
+                                'explosion'
+                            );
+                            explosion.setScale(0.5);
+                            this.tweens.add({
+                                targets: explosion,
+                                scaleX: 1,
+                                scaleY: 1,
+                                alpha: 0,
+                                duration: 400,
+                                onComplete: () => explosion.destroy()
+                            });
+                        });
                     });
 
                     this.gameOver(false); // Don't play water splash for self-destruct
