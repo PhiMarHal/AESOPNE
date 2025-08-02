@@ -51,8 +51,8 @@ function injectFarcadeGameLogic(html) {
                 }`;
     });
 
-    // 2. Inject gameOver() call in showGameOverScreen() after UI is set up
-    const gameOverScreenPattern = /(this\.playButton\.setPosition\(450, 1120\); \/\/ 70% of screen[\s\S]*?this\.playButton\.setInteractive\(\);)/;
+    // 2. UPDATED: Inject gameOver() call in showGameOverScreen() - updated pattern for new layout
+    const gameOverScreenPattern = /(this\.playButton\.setPosition\(450, 1360\);[\s\S]*?this\.playButton\.setInteractive\(\);)/;
     modifiedHtml = modifiedHtml.replace(gameOverScreenPattern, (match) => {
         return `${match}
 
@@ -67,7 +67,26 @@ function injectFarcadeGameLogic(html) {
                 }`;
     });
 
-    // 3. Inject event handlers after the Phaser game instance is created
+    // 3. FALLBACK: If the above pattern doesn't match, try a more generic approach
+    if (!modifiedHtml.includes('window.FarcadeSDK.singlePlayer.actions.gameOver')) {
+        console.log('Primary gameOver pattern not found, trying fallback pattern...');
+
+        // Look for the play again button setup in showGameOverScreen
+        const fallbackPattern = /(this\.playButton\.removeAllListeners\(\);[\s\S]*?this\.startGame\(\);[\s\S]*?\}\);)/;
+        modifiedHtml = modifiedHtml.replace(fallbackPattern, (match) => {
+            return `${match}
+
+                // Farcade SDK: Call gameOver after button setup (fallback injection)
+                if (window.FarcadeSDK) {
+                    this.time.delayedCall(1000, () => {
+                        window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
+                        console.log('Farcade SDK: Game over signal sent with score (fallback):', this.maxHeight);
+                    });
+                }`;
+        });
+    }
+
+    // 4. Inject event handlers after the Phaser game instance is created
     const phaserGameInstancePattern = /(const game = new Phaser\.Game\(config\);)/;
     modifiedHtml = modifiedHtml.replace(phaserGameInstancePattern, (match) => {
         return `${match}
@@ -79,6 +98,11 @@ function injectFarcadeGameLogic(html) {
                 console.log('Farcade SDK: Play again requested.');
                 const activeScene = game.scene.getScene('VerticalLauncher');
                 if (activeScene && activeScene.startGame) {
+                    // IMPORTANT: Clean up game over elements before restarting
+                    if (activeScene.hideGameOverElements) {
+                        activeScene.hideGameOverElements();
+                        console.log('Farcade SDK: Game over elements cleaned up.');
+                    }
                     activeScene.startGame();
                     console.log('Farcade SDK: Game restarted.');
                 } else {

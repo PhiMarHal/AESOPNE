@@ -132,6 +132,7 @@
                 this.load.image('ship', ASSET_BASE + '/assets/ship.png');
                 this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
                 this.load.image('wing', ASSET_BASE + '/assets/wing.png');
+                this.load.image('water_splash', ASSET_BASE + '/assets/water_splash.png');
 
                 this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
                 this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
@@ -144,6 +145,17 @@
                 this.load.image('flag_noun', ASSET_BASE + '/assets/flag_noun.png');
                 this.load.image('flag_doodle', ASSET_BASE + '/assets/flag_doodle.png');
                 this.load.image('title_aesopne', ASSET_BASE + '/assets/title_aesopne.png');
+                this.load.image('explosion', ASSET_BASE + '/assets/explosion.png');
+                this.load.image('arrow', `${ASSET_BASE}/assets/arrow.png`);
+
+                // Load digit sprites (0-9)
+                for (let i = 0; i < 10; i++) {
+                    this.load.image(`digit_${i}`, `${ASSET_BASE}/assets/digit_${i}.png`);
+                }
+
+                // Load height label sprite
+                this.load.image('height_label', `${ASSET_BASE}/assets/height_label.png`);
+                this.load.image('meter_label', `${ASSET_BASE}/assets/meter_label.png`);
 
                 // Sounds
                 this.load.audio('rolling_ball', ASSET_BASE + '/assets/rolling_ball.mp3');
@@ -187,7 +199,7 @@
                 this.lastBackgroundUpdate = 0;
                 this.backgroundUpdateInterval = 500; // Update every 500ms
 
-                // Create initial background elements around starting area
+                // Create initial background elements
                 this.createBackgroundElements();
 
                 // Create UI areas - fixed to camera
@@ -213,21 +225,6 @@
                 this.cannon.setDisplaySize(this.CANNON_SIZE, this.CANNON_SIZE * 2);
                 this.cannon.setOrigin(0.5, 0.5);
 
-                // Create UI text - fixed to camera
-                this.heightText = this.add.text(40, 60, 'Height: 0m', {
-                    fontSize: '40px',
-                    fill: '#ffffff'
-                });
-                this.heightText.setScrollFactor(0);
-                this.heightText.setDepth(1000);
-
-                this.personalBestText = this.add.text(40, 120, `Best: ${this.personalBest}m`, {
-                    fontSize: '32px',
-                    fill: '#ecf0f1'
-                });
-                this.personalBestText.setScrollFactor(0);
-                this.personalBestText.setDepth(1000);
-
                 // Create quest UI elements - positioned at 60-70% to the right
                 this.questFlagIcon = this.add.image(650, 100, 'flag_milady');
                 this.questFlagIcon.setDisplaySize(120, 120); // 2x bigger for better visibility
@@ -236,15 +233,7 @@
                 this.questFlagIcon.setDepth(1000);
                 this.questFlagIcon.setVisible(false);
 
-                this.questCountText = this.add.text(760, 100, '4', {
-                    fontSize: '72px', // 50% bigger (was 48px)
-                    fill: '#FFD700',
-                    fontWeight: 'bold'
-                }).setOrigin(0.5);
-                this.questCountBaseScale = this.questCountText.scaleX;
-                this.questCountText.setScrollFactor(0);
-                this.questCountText.setDepth(1000);
-                this.questCountText.setVisible(false);
+                this.setupQuestDigitDisplay();
 
                 // Create cannonball UI with new positioning - rightmost slot centered at 450
                 this.cannonballUI = [];
@@ -299,14 +288,18 @@
                 // Initialize cloud system
                 this.initializeCloudSystem();
 
+                // Initialize digits
+                this.setupSpriteHeightDisplay();
+
                 // Store elements - updated for dynamic background
                 this.gameElements = [
                     this.ship, this.cannon, ...this.backgroundRects
                 ];
 
                 this.uiElements = [
-                    this.topUI, this.bottomUI, this.heightText,
-                    this.personalBestText, this.questFlagIcon, this.questCountText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cannonballUIFlags, ...this.cooldownGraphics,
+                    this.topUI, this.bottomUI,
+                    this.heightLabel, ...this.heightDigits, this.meterLabel,
+                    this.questFlagIcon, this.questDigit, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cannonballUIFlags, ...this.cooldownGraphics,
                     this.helpButton
                 ];
 
@@ -317,13 +310,13 @@
 
                 // Replace text with image - set to user's preferred size
                 this.titleImage = this.add.image(450, -100, 'title_aesopne'); // Start above screen for physics animation
-                this.titleImage.setDisplaySize(600, 300);
+                this.titleImage.setDisplaySize(800, 400);
                 this.titleImage.setOrigin(0.5);
                 this.titleImage.setScrollFactor(0);
                 this.titleImage.setDepth(2001);
 
                 this.playButton = this.add.image(450, -200, 'button_start'); // Start above screen for physics animation
-                this.playButton.setDisplaySize(432, 216); // 20% bigger (was 360x180)
+                this.playButton.setDisplaySize(450, 300); // 20% bigger (was 360x180)
                 this.playButton.setScrollFactor(0);
                 this.playButton.setDepth(2001);
 
@@ -342,6 +335,8 @@
 
                 // Start with title screen
                 this.showTitleScreen();
+
+
 
                 // Set up interactions - but don't make interactive yet (physics animation will handle this)
                 this.playButton.on('pointerdown', () => {
@@ -802,6 +797,55 @@
                 return this.superShotReady;
             }
 
+            setupQuestDigitDisplay() {
+                const questDigitX = 760; // Same position as the old text
+                const questDigitY = 100;
+                const digitWidth = 36; // Same size as height digits
+                const digitHeight = 54; // Same size as height digits
+
+                // Center the digit vertically like the height display
+                const digitCenterY = questDigitY - (digitHeight / 2);
+
+                // Create single quest count digit sprite
+                this.questDigit = this.add.image(questDigitX, digitCenterY, 'digit_4'); // Start with 4
+                this.questDigit.setOrigin(0.5, 0); // Center horizontally, top-align vertically
+                this.questDigit.setScrollFactor(0);
+                this.questDigit.setDepth(1000);
+                this.questDigit.setDisplaySize(digitWidth, digitHeight);
+                this.questDigit.setVisible(false); // Hidden initially like the quest system
+
+                // Store the base scale for animations (like the original quest system)
+                this.questDigitBaseScale = this.questDigit.scaleX;
+
+                // Store config for easy access
+                this.questDigitConfig = {
+                    x: questDigitX,
+                    y: digitCenterY,
+                    width: digitWidth,
+                    height: digitHeight
+                };
+
+                // Initialize
+                this.currentDisplayedQuestCount = -1; // Force initial update
+            }
+
+            updateQuestDigitDisplay(count) {
+                // Skip update if count hasn't changed (performance optimization)
+                if (count === this.currentDisplayedQuestCount) {
+                    return;
+                }
+
+                this.currentDisplayedQuestCount = count;
+
+                // Clamp to single digit (0-9)
+                const digitValue = Math.max(0, Math.min(9, count));
+
+                // Update the digit texture
+                this.questDigit.setTexture(`digit_${digitValue}`);
+            }
+
+            // Updated quest system methods to use sprites instead of text
+
             startNewQuest() {
                 // Select a random flag type for the new quest
                 const flagTypes = ['flag_milady', 'flag_bayc', 'flag_noun', 'flag_doodle'];
@@ -817,8 +861,9 @@
                 this.questFlagIcon.setTexture(this.questTargetFlag);
                 this.questFlagIcon.setVisible(true);
 
-                this.questCountText.setText(this.questTargetCount.toString());
-                this.questCountText.setVisible(true);
+                // Update digit display instead of text
+                this.updateQuestDigitDisplay(this.questTargetCount);
+                this.questDigit.setVisible(true);
 
                 this.questLevel++;
             }
@@ -831,9 +876,9 @@
 
                     console.log(`🎯 Quest progress: ${this.questCurrentCount}/${this.questTargetCount} ${flagType} collected`);
 
-                    // Visual feedback - use the correct base scales
+                    // Visual feedback - use the digit scale instead of text scale
                     const targetFlagScale = this.questFlagBaseScale * 1.4;
-                    const targetCountScale = this.questCountBaseScale * 1.4;
+                    const targetDigitScale = this.questDigitBaseScale * 1.4;
 
                     this.tweens.add({
                         targets: this.questFlagIcon,
@@ -845,16 +890,16 @@
                     });
 
                     this.tweens.add({
-                        targets: this.questCountText,
-                        scaleX: targetCountScale,
-                        scaleY: targetCountScale,
+                        targets: this.questDigit,
+                        scaleX: targetDigitScale,
+                        scaleY: targetDigitScale,
                         duration: 200,
                         ease: 'Back.easeOut',
                         yoyo: true
                     });
 
-                    // Update UI
-                    this.questCountText.setText(remaining.toString());
+                    // Update digit display instead of text
+                    this.updateQuestDigitDisplay(remaining);
 
                     // Check if quest is complete
                     if (remaining <= 0) {
@@ -885,14 +930,14 @@
                 this.helpPopupBG = this.add.rectangle(450, 800, 720, 1180, 0x2c3e50);
                 this.helpPopupBG.setScrollFactor(0);
                 this.helpPopupBG.setDepth(2000);
-                this.helpPopupBG.setStrokeStyle(4, 0xffffff);
+                this.helpPopupBG.setStrokeStyle(4, 0xFFD800);
                 this.helpPopupBG.setInteractive();
 
                 // Create help title - bigger and better positioned
                 this.helpTitle = this.add.text(450, 350, 'HOW TO PLAY', {
                     fontSize: '64px',
-                    fill: '#ffffff',
-                    fontWeight: 'bold',
+                    fill: '#CB9024',
+                    fontFamily: 'Impact, "Arial Black", sans-serif',
                     align: 'center'
                 }).setOrigin(0.5);
                 this.helpTitle.setScrollFactor(0);
@@ -915,19 +960,20 @@
 • do NOT press the selfdestruct 
   button`;
 
-                this.helpContent = this.add.text(450, 700, helpText, {
-                    fontSize: '28px',
-                    fill: '#ecf0f1',
+                this.helpContent = this.add.text(450, 760, helpText, {
+                    fontSize: '32px',
+                    fill: '#FFD800',
+                    fontFamily: 'Arial Black',
                     align: 'left',
                     lineSpacing: 8,
-                    wordWrap: { width: 620 }
+                    wordWrap: { width: 820 }
                 }).setOrigin(0.5);
                 this.helpContent.setScrollFactor(0);
                 this.helpContent.setDepth(2001);
 
                 // Create self-destruct button - better positioned
-                this.destructButton = this.add.image(450, 1050, 'button_destruct');
-                this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                this.destructButton = this.add.image(450, 1240, 'button_destruct');
+                this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 4, this.CANNONBALL_SIZE * 4);
                 this.destructButton.setScrollFactor(0);
                 this.destructButton.setDepth(2002); // Higher depth to ensure it's on top
                 this.destructButton.setInteractive();
@@ -935,12 +981,44 @@
                     console.log('Self-destruct activated!');
                     this.sound.play('tap_button');
                     event.stopPropagation();
-                    this.hideHelpPopup();
+                    this.hideHelpPopup(false);
 
-                    // Play explosion sound 1 second after clicking
-                    this.time.delayedCall(1000, () => {
-                        this.sound.play('super_shot');
-                        console.log('💥 Self-destruct explosion!');
+                    // Play explosion sound immediately  
+                    this.sound.play('super_shot');
+
+                    // Shake ship and create explosions
+                    const originalX = this.ship.x;
+                    const originalY = this.ship.y;
+
+                    // Simple ship shaking
+                    const shakeTimer = this.time.addEvent({
+                        delay: 50,
+                        repeat: 20,
+                        callback: () => {
+                            this.ship.x = originalX + Phaser.Math.Between(-25, 25);
+                            this.ship.y = originalY + Phaser.Math.Between(-25, 25);
+                        }
+                    });
+
+                    // Three explosions
+                    [200, 400, 600, 800].forEach((delay) => {
+                        this.time.delayedCall(delay, () => {
+                            this.sound.play('super_shot');
+                            const explosion = this.add.image(
+                                originalX + Phaser.Math.Between(-150, 150),
+                                originalY + Phaser.Math.Between(-150, 150),
+                                'explosion'
+                            );
+                            explosion.setScale(0.5);
+                            this.tweens.add({
+                                targets: explosion,
+                                scaleX: 1,
+                                scaleY: 1,
+                                alpha: 0,
+                                duration: 400,
+                                onComplete: () => explosion.destroy()
+                            });
+                        });
                     });
 
                     this.gameOver(false); // Don't play water splash for self-destruct
@@ -981,7 +1059,7 @@
                 });
             }
 
-            hideHelpPopup() {
+            hideHelpPopup(unpause = true) {
                 console.log('Hiding help popup - resuming all game logic');
 
                 // Remove outside click handler
@@ -1000,10 +1078,11 @@
                     this.helpPopupElements = null;
                 }
 
-                // Resume physics and tweens
-                this.physics.world.resume();
-                this.tweens.resumeAll();
-
+                if (unpause) {
+                    // Resume physics and tweens
+                    this.physics.world.resume();
+                    this.tweens.resumeAll();
+                }
                 // Resume the game
                 this.gameState = 'playing';
             }
@@ -1022,32 +1101,43 @@
                 this.titleElements.forEach(element => element.setVisible(true));
                 this.gameState = 'menu';
 
-                // Reset positions for animation
+                // Create title screen ship if it doesn't exist
+                if (!this.titleShip) {
+                    this.titleShip = this.add.image(450, 800, 'ship'); // 50% height
+                    this.titleShip.setDisplaySize(384, 384); // Normal game ship size
+                    this.titleShip.setScrollFactor(0);
+                    this.titleShip.setDepth(2000);
+                    this.titleElements.push(this.titleShip); // Add to title elements for proper management
+
+                    // Start gentle swaying animation
+                    this.startTitleShipSway();
+                }
+
+                // Reset positions for animation - NEW POSITIONS
                 this.titleImage.setPosition(450, -150);
                 this.playButton.setPosition(450, -200);
+                this.titleShip.setVisible(true);
 
                 // Remove button interactivity during animation
                 this.playButton.disableInteractive();
 
-                // AESOPNE animation: sharp 0.2s drop, 0.2s bounce, 0.1s settle
+                // AESOPNE animation: 15% of screen (240px)
                 this.tweens.add({
                     targets: this.titleImage,
-                    y: 480, // 30% of screen
-                    duration: 200, // 0.2s drop
+                    y: 240, // 15% of screen (was 160)
+                    duration: 200,
                     ease: 'Power2.easeIn',
                     onComplete: () => {
-                        // Bounce up
                         this.tweens.add({
                             targets: this.titleImage,
-                            y: 420, // Bounce up 60px
-                            duration: 100, // 0.1s up
+                            y: 180, // Bounce up 60px
+                            duration: 100,
                             ease: 'Power2.easeOut',
                             onComplete: () => {
-                                // Settle down
                                 this.tweens.add({
                                     targets: this.titleImage,
-                                    y: 480, // Back to final position
-                                    duration: 100, // 0.1s settle
+                                    y: 240, // Back to final position
+                                    duration: 100,
                                     ease: 'Power2.easeIn'
                                 });
                             }
@@ -1055,29 +1145,26 @@
                     }
                 });
 
-                // START animation: starts after 0.5s (when AESOPNE finishes)
+                // START animation: 85% of screen (1360px)
                 this.time.delayedCall(500, () => {
-                    // Start loading music async during the START button animation
                     this.loadMusicAsync();
 
                     this.tweens.add({
                         targets: this.playButton,
-                        y: 1120, // 70% of screen
-                        duration: 200, // 0.2s drop
+                        y: 1360, // 85% of screen (was 1320)
+                        duration: 200,
                         ease: 'Power2.easeIn',
                         onComplete: () => {
-                            // Bounce up
                             this.tweens.add({
                                 targets: this.playButton,
-                                y: 1060, // Bounce up 60px
-                                duration: 100, // 0.1s up
+                                y: 1300, // Bounce up 60px
+                                duration: 100,
                                 ease: 'Power2.easeOut',
                                 onComplete: () => {
-                                    // Settle down
                                     this.tweens.add({
                                         targets: this.playButton,
-                                        y: 1120, // Back to final position
-                                        duration: 100, // 0.1s settle
+                                        y: 1360, // Back to final position
+                                        duration: 100,
                                         ease: 'Power2.easeIn'
                                     });
                                 }
@@ -1094,7 +1181,387 @@
                 });
             }
 
+            startTitleShipSway() {
+                // Clean up any existing animations
+                if (this.titleShipSway) {
+                    this.titleShipSway.destroy();
+                }
+                if (this.titleShipBob) {
+                    this.titleShipBob.destroy();
+                }
+
+                // Create gentle rotational swaying motion (like rocking in waves)
+                const maxRotation = Phaser.Math.DegToRad(-8); // Slightly less than game's 10 degrees
+                this.titleShipSway = this.tweens.add({
+                    targets: this.titleShip,
+                    rotation: -maxRotation,
+                    duration: 4000, // 2 seconds - slower and gentler than game
+                    ease: 'Sine.easeInOut',
+                    yoyo: true, // Rock back and forth
+                    repeat: -1, // Infinite loop
+                    onStart: () => {
+                        // Set initial rotation to +8 degrees so it rocks to -8 first
+                        this.titleShip.setRotation(maxRotation);
+                    }
+                });
+
+                // Create subtle vertical bobbing motion (simulating floating on water)
+                this.titleShipBob = this.tweens.add({
+                    targets: this.titleShip,
+                    y: 790, // Bob up 10px from center (800px)
+                    duration: 3000, // 3 seconds - different timing for natural feel
+                    ease: 'Sine.easeInOut',
+                    yoyo: true, // Bob up and down
+                    repeat: -1 // Infinite loop
+                });
+            }
+
+
+            // Game over screen setup methods
+            setupGameOverDigitDisplays() {
+                const digitWidth = 48;
+                const digitHeight = 72;
+
+                // "YOU REACHED" display at 35% height (560px)
+                this.reachedDigits = [];
+                this.maxReachedDigits = 6;
+
+                for (let i = 0; i < this.maxReachedDigits; i++) {
+                    const digit = this.add.image(0, 0, 'digit_0');
+                    digit.setOrigin(0, 0);
+                    digit.setScrollFactor(0);
+                    digit.setDepth(2001);
+                    digit.setDisplaySize(digitWidth, digitHeight);
+                    digit.setVisible(false);
+                    this.reachedDigits.push(digit);
+                }
+
+                // "YOU REACHED" label - BOLD CAPS TEXT with new font
+                this.youReachedLabel = this.add.text(0, 0, 'You reached', {
+                    fontSize: '48px',
+                    fill: '#ffffff',
+                    fontFamily: 'Impact, "Arial Black", sans-serif',
+                    align: 'center'
+                }).setOrigin(0.5);
+                this.youReachedLabel.setScrollFactor(0);
+                this.youReachedLabel.setDepth(2001);
+                this.youReachedLabel.setVisible(false);
+
+                // "YOU REACHED" meter label
+                this.reachedMeterLabel = this.add.image(0, 0, 'meter_label');
+                this.reachedMeterLabel.setOrigin(0, 0);
+                this.reachedMeterLabel.setScrollFactor(0);
+                this.reachedMeterLabel.setDepth(2001);
+                this.reachedMeterLabel.setDisplaySize(32, 32);
+                this.reachedMeterLabel.setVisible(false);
+
+                // Moon distance display at 65% height (1040px)
+                this.moonDigits = [];
+                this.maxMoonDigits = 9; // Moon distance is huge, need more digits
+
+                for (let i = 0; i < this.maxMoonDigits; i++) {
+                    const digit = this.add.image(0, 0, 'digit_0');
+                    digit.setOrigin(0, 0);
+                    digit.setScrollFactor(0);
+                    digit.setDepth(2001);
+                    digit.setDisplaySize(digitWidth, digitHeight);
+                    digit.setVisible(false);
+                    this.moonDigits.push(digit);
+                }
+
+                // "LEFT TO THE MOON" label - BOLD CAPS TEXT with new font
+                this.leftToMoonLabel = this.add.text(0, 0, 'left to the Moon', {
+                    fontSize: '48px',
+                    fill: '#ffffff',
+                    fontFamily: 'Impact, "Arial Black", sans-serif',
+                    align: 'center'
+                }).setOrigin(0.5);
+                this.leftToMoonLabel.setScrollFactor(0);
+                this.leftToMoonLabel.setDepth(2001);
+                this.leftToMoonLabel.setVisible(false);
+
+                // Moon meter label
+                this.moonMeterLabel = this.add.image(0, 0, 'meter_label');
+                this.moonMeterLabel.setOrigin(0, 0);
+                this.moonMeterLabel.setScrollFactor(0);
+                this.moonMeterLabel.setDepth(2001);
+                this.moonMeterLabel.setDisplaySize(32, 32);
+                this.moonMeterLabel.setVisible(false);
+            }
+
+            setupGameOverMessageSystem() {
+                // Message options
+                this.gameOverMessages = [
+                    "To win the game, fly to the Moon",
+                    "It's so over...",
+                    "Perfect run, changed my life forever - 3 stars",
+                    "It's pronounced Ass-Pony",
+                    "TGE happens only if you play KAJISULI"
+                ];
+                this.currentMessageIndex = 0;
+
+                // Create the rotating message text at 50% height (800px)
+                this.gameOverMessage = this.add.text(450, 800, this.gameOverMessages[0], {
+                    fontSize: '64px',
+                    fill: '#ffffff',
+                    fontFamily: 'Impact, "Arial Black", sans-serif',
+                    align: 'center',
+                    wordWrap: { width: 700 }
+                }).setOrigin(0.5);
+                this.gameOverMessage.setScrollFactor(0);
+                this.gameOverMessage.setDepth(2001);
+                this.gameOverMessage.setVisible(false);
+
+                // Create left arrow - 2x bigger
+                this.leftArrow = this.add.image(50, 800, 'arrow');
+                this.leftArrow.setOrigin(0.5);
+                this.leftArrow.setScrollFactor(0);
+                this.leftArrow.setDepth(2001);
+                this.leftArrow.setDisplaySize(120, 120); // 2x bigger (was 60x60)
+                this.leftArrow.setVisible(false);
+                this.leftArrow.setInteractive();
+
+                // Create right arrow (mirrored) - 2x bigger
+                this.rightArrow = this.add.image(850, 800, 'arrow');
+                this.rightArrow.setOrigin(0.5);
+                this.rightArrow.setScrollFactor(0);
+                this.rightArrow.setDepth(2001);
+                this.rightArrow.setDisplaySize(120, 120); // 2x bigger (was 60x60)
+                this.rightArrow.setFlipX(true); // Mirror the sprite
+                this.rightArrow.setVisible(false);
+                this.rightArrow.setInteractive();
+
+                // Set up arrow click handlers with yellow blink effect
+                this.leftArrow.on('pointerdown', () => {
+                    this.sound.play('tap_button');
+
+                    // Yellow blink effect
+                    this.leftArrow.setTint(0xFFD800);
+                    this.tweens.add({
+                        targets: this.leftArrow,
+                        alpha: 1,
+                        duration: 100,
+                        yoyo: false,
+                        repeat: 0,
+                        onComplete: () => {
+                            this.leftArrow.setTint(0xFFFFFF); // Reset to white
+                            this.leftArrow.setAlpha(1.0);
+                        }
+                    });
+
+                    this.currentMessageIndex = (this.currentMessageIndex - 1 + this.gameOverMessages.length) % this.gameOverMessages.length;
+                    this.gameOverMessage.setText(this.gameOverMessages[this.currentMessageIndex]);
+                });
+
+                this.rightArrow.on('pointerdown', () => {
+                    this.sound.play('tap_button');
+
+                    // Yellow blink effect
+                    this.rightArrow.setTint(0xFFD800);
+                    this.tweens.add({
+                        targets: this.rightArrow,
+                        alpha: 1,
+                        duration: 100,
+                        yoyo: false,
+                        repeat: 0,
+                        onComplete: () => {
+                            this.rightArrow.setTint(0xFFFFFF); // Reset to white
+                            this.rightArrow.setAlpha(1.0);
+                        }
+                    });
+
+                    this.currentMessageIndex = (this.currentMessageIndex + 1) % this.gameOverMessages.length;
+                    this.gameOverMessage.setText(this.gameOverMessages[this.currentMessageIndex]);
+                });
+            }
+
+            updateGameOverReachedDisplay(heightInMeters) {
+                const heightString = heightInMeters.toString().padStart(6, '0');
+
+                // Find first non-zero digit for opacity
+                let firstNonZeroIndex = 0;
+                for (let i = 0; i < 6; i++) {
+                    if (heightString[i] !== '0') {
+                        firstNonZeroIndex = i;
+                        break;
+                    }
+                }
+                if (heightInMeters === 0) {
+                    firstNonZeroIndex = 5;
+                }
+
+                // Position everything centered at 30% height (was 35%)
+                const centerX = 450;
+                const labelY = 460; // Label above digits (30% height)
+                const digitY = 520; // Digits below label
+                const totalDigitWidth = 6 * 48; // 6 digits × 36px each
+                const digitsStartX = centerX - (totalDigitWidth / 2);
+                const meterX = digitsStartX + totalDigitWidth;
+                const meterY = digitY + 54 - 32; // Bottom-align with digits
+
+                // Position and show "YOU REACHED" text
+                this.youReachedLabel.setPosition(centerX, labelY);
+                this.youReachedLabel.setVisible(true);
+
+                // Position and show digits
+                for (let i = 0; i < 6; i++) {
+                    const digitChar = heightString[i];
+                    const digitValue = parseInt(digitChar);
+                    const digitSprite = this.reachedDigits[i];
+
+                    digitSprite.setTexture(`digit_${digitValue}`);
+                    digitSprite.setPosition(digitsStartX + (i * 48), digitY);
+
+                    const opacity = i < firstNonZeroIndex ? 0.4 : 1.0;
+                    digitSprite.setAlpha(opacity);
+                    digitSprite.setVisible(true);
+                }
+
+                // Position and show meter label
+                this.reachedMeterLabel.setPosition(meterX, meterY);
+                this.reachedMeterLabel.setVisible(true);
+            }
+
+            updateGameOverMoonDisplay(remainingMeters) {
+                const moonString = remainingMeters.toString().padStart(9, '0');
+
+                // Find first non-zero digit for opacity
+                let firstNonZeroIndex = 0;
+                for (let i = 0; i < 9; i++) {
+                    if (moonString[i] !== '0') {
+                        firstNonZeroIndex = i;
+                        break;
+                    }
+                }
+
+                // Position everything centered at 65% height
+                const centerX = 450;
+                const digitY = 1000; // Digits 
+                const labelY = 1140; // Label further below digits (was 1080)
+                const totalDigitWidth = 9 * 48; // 9 digits × 36px each
+                const digitsStartX = centerX - (totalDigitWidth / 2);
+                const meterX = digitsStartX + totalDigitWidth;
+                const meterY = digitY + 54 - 32; // Bottom-align with digits
+
+                // Position and show digits
+                for (let i = 0; i < 9; i++) {
+                    const digitChar = moonString[i];
+                    const digitValue = parseInt(digitChar);
+                    const digitSprite = this.moonDigits[i];
+
+                    digitSprite.setTexture(`digit_${digitValue}`);
+                    digitSprite.setPosition(digitsStartX + (i * 48), digitY);
+
+                    const opacity = i < firstNonZeroIndex ? 0.4 : 1.0;
+                    digitSprite.setAlpha(opacity);
+                    digitSprite.setVisible(true);
+                }
+
+                // Position and show meter label
+                this.moonMeterLabel.setPosition(meterX, meterY);
+                this.moonMeterLabel.setVisible(true);
+
+                // Position and show "LEFT TO THE MOON" text
+                this.leftToMoonLabel.setPosition(centerX, labelY);
+                this.leftToMoonLabel.setVisible(true);
+            }
+
+            // Updated showGameOverScreen method
+            showGameOverScreen() {
+                // Stop following and return camera to initial position
+                this.cameras.main.stopFollow();
+                this.cameras.main.setScroll(0, this.SEA_LEVEL - 1025);
+
+                // Show title elements without animation
+                this.gameElements.forEach(element => element.setVisible(false));
+                this.backgroundRects.forEach(rect => rect.setVisible(false));
+                this.uiElements.forEach(element => element.setVisible(false));
+                this.clouds.forEach(cloud => cloud.setVisible(false));
+                this.titleElements.forEach(element => element.setVisible(true));
+                this.gameState = 'gameOver';
+
+                if (this.titleShip) {
+                    this.titleShip.setVisible(false);
+                    // Reset ship position and rotation for when it shows again
+                    this.titleShip.setPosition(450, 800);
+                    this.titleShip.setRotation(0);
+                }
+
+                // Position AESOPNE image at 15% (same as updated title screen)
+                this.titleImage.setPosition(450, 240);
+                this.titleImage.setVisible(true);
+
+                // Set up game over displays if not already created
+                if (!this.reachedDigits) {
+                    this.setupGameOverDigitDisplays();
+                }
+                if (!this.gameOverMessage) {
+                    this.setupGameOverMessageSystem();
+                }
+
+                // Pick random message for this game over
+                this.currentMessageIndex = Math.floor(Math.random() * this.gameOverMessages.length);
+                this.gameOverMessage.setText(this.gameOverMessages[this.currentMessageIndex]);
+
+                // Show all game over elements
+                this.gameOverMessage.setVisible(true);
+                this.leftArrow.setVisible(true);
+                this.rightArrow.setVisible(true);
+
+                // Update displays with current data
+                this.updateGameOverReachedDisplay(this.maxHeight);
+
+                const moonDistance = 384400000;
+                const remaining = moonDistance - this.maxHeight;
+                this.updateGameOverMoonDisplay(remaining);
+
+                // Position play button at 85% and make it interactive
+                this.playButton.setPosition(450, 1360);
+                this.playButton.setInteractive();
+
+                // Farcade SDK: Hide our play button and call SDK gameOver after a delay
+                if (window.FarcadeSDK) {
+                    this.playButton.setVisible(false); // Hide our button since Farcade UI takes over
+                    
+                    this.time.delayedCall(1000, () => {
+                        window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
+                        console.log('Farcade SDK: Game over signal sent with score:', this.maxHeight);
+                    });
+                }
+
+                this.playButton.removeAllListeners();
+                this.playButton.on('pointerdown', () => {
+                    this.sound.play('tap_button');
+                    this.hideGameOverElements();
+                    this.startGame();
+                });
+            }
+
+            hideGameOverElements() {
+                // Hide all custom game over elements
+                if (this.gameOverMessage) this.gameOverMessage.setVisible(false);
+                if (this.leftArrow) this.leftArrow.setVisible(false);
+                if (this.rightArrow) this.rightArrow.setVisible(false);
+                if (this.youReachedLabel) this.youReachedLabel.setVisible(false);
+                if (this.leftToMoonLabel) this.leftToMoonLabel.setVisible(false);
+                if (this.reachedMeterLabel) this.reachedMeterLabel.setVisible(false);
+                if (this.moonMeterLabel) this.moonMeterLabel.setVisible(false);
+
+                if (this.reachedDigits) {
+                    this.reachedDigits.forEach(digit => digit.setVisible(false));
+                }
+                if (this.moonDigits) {
+                    this.moonDigits.forEach(digit => digit.setVisible(false));
+                }
+            }
+
             showGameScreen() {
+                // Stop title ship sway animation when transitioning to game
+                if (this.titleShipSway) {
+                    this.titleShipSway.destroy();
+                    this.titleShipSway = null;
+                }
+
                 // No physics bodies to clean up since we're using tweens now
                 this.titleElements.forEach(element => element.setVisible(false));
                 this.gameElements.forEach(element => element.setVisible(true));
@@ -1146,7 +1613,6 @@
 
                 // Hide quest UI initially
                 this.questFlagIcon.setVisible(false);
-                this.questCountText.setVisible(false);
 
                 // Reset cloud system
                 this.cloudGridData.clear();
@@ -1188,7 +1654,7 @@
                 this.cannon.setRotation(this.cannonAngle);
 
                 // Clear projectiles
-                this.flyingBalls.clear(true, true);
+                this.cleanupFlyingBalls();
                 this.cannonballProjectiles.clear(true, true);
 
                 // Camera follows ship with instant following
@@ -1633,6 +2099,24 @@
                 }
             }
 
+            cleanupFlyingBalls() {
+                // Properly destroy all flying balls and their attached components
+                this.flyingBalls.children.entries.forEach(ball => {
+                    if (ball.leftWing) {
+                        ball.leftWing.destroy();
+                    }
+                    if (ball.rightWing) {
+                        ball.rightWing.destroy();
+                    }
+                    if (ball.flag) {
+                        ball.flag.destroy();
+                    }
+                });
+
+                // Now clear the group
+                this.flyingBalls.clear(true, true);
+            }
+
             updateCannonballUI() {
                 // Gray placeholders are always visible, just update the actual cannonballs and flags
                 for (let i = 0; i < 4; i++) {
@@ -1720,6 +2204,125 @@
                 }
             }
 
+            setupSpriteHeightDisplay() {
+                const startX = 40;
+                const labelCenterY = 100; // Vertical center point for alignment
+                const digitWidth = 36; // Updated to 36x54
+                const digitHeight = 54; // Updated to 36x54
+                const labelHeight = 48; // Keep height, will adjust width for 3:1 ratio
+                const labelWidth = 144; // 3:1 ratio (144:48)
+
+                // Calculate Y positions for proper centering
+                const labelY = labelCenterY - (labelHeight / 2); // Center label at y=70
+                const digitY = labelCenterY - (digitHeight / 2); // Center digits at y=70
+                const meterY = labelCenterY + (digitHeight / 2) - 32; // Bottom-align meter with digits
+
+                // Create "Height:" label sprite with 3:1 ratio
+                this.heightLabel = this.add.image(startX, labelY, 'height_label');
+                this.heightLabel.setOrigin(0, 0);
+                this.heightLabel.setScrollFactor(0);
+                this.heightLabel.setDepth(1000);
+                this.heightLabel.setDisplaySize(labelWidth, labelHeight);
+
+                // Create pool of 6 digit sprites (enough for heights up to 999,999m)
+                this.heightDigits = [];
+                this.maxHeightDigits = 6;
+
+                for (let i = 0; i < this.maxHeightDigits; i++) {
+                    const digit = this.add.image(0, 0, 'digit_0');
+                    digit.setOrigin(0, 0);
+                    digit.setScrollFactor(0);
+                    digit.setDepth(1000);
+                    digit.setDisplaySize(digitWidth, digitHeight);
+                    digit.setVisible(true); // Always visible for 000000 display
+                    this.heightDigits.push(digit);
+                }
+
+                // Create "m" label sprite
+                this.meterLabel = this.add.image(0, 0, 'meter_label');
+                this.meterLabel.setOrigin(0, 0);
+                this.meterLabel.setScrollFactor(0);
+                this.meterLabel.setDepth(1000);
+                this.meterLabel.setDisplaySize(32, 32);
+
+                // Store layout info
+                this.heightDisplayConfig = {
+                    startX: startX,
+                    labelY: labelY,
+                    digitY: digitY,
+                    meterY: meterY,
+                    digitWidth: digitWidth,
+                    digitHeight: digitHeight,
+                    labelWidth: labelWidth,
+                    meterWidth: 32,
+                    spacing: 48 // Increased to about a digit width (was 12)
+                };
+
+                // Initialize with 000000
+                this.currentDisplayedHeight = -1; // Force initial update
+                this.updateSpriteHeightDisplay(0);
+            }
+
+            updateSpriteHeightDisplay(heightInMeters) {
+                // Skip update if height hasn't changed (performance optimization)
+                if (heightInMeters === this.currentDisplayedHeight) {
+                    return;
+                }
+
+                this.currentDisplayedHeight = heightInMeters;
+
+                const config = this.heightDisplayConfig;
+
+                // Always display 6 digits with leading zeros (e.g., "000123")
+                const heightString = heightInMeters.toString().padStart(6, '0');
+
+                // Find first non-zero digit for opacity handling
+                let firstNonZeroIndex = 0;
+                for (let i = 0; i < 6; i++) {
+                    if (heightString[i] !== '0') {
+                        firstNonZeroIndex = i;
+                        break;
+                    }
+                }
+
+                // Special case: if height is 0, show the last digit (rightmost 0) at full opacity
+                if (heightInMeters === 0) {
+                    firstNonZeroIndex = 5; // Last digit gets full opacity
+                }
+
+                // Calculate positions
+                const labelEndX = config.startX + config.labelWidth + config.spacing;
+                const digitsStartX = labelEndX;
+                const digitsEndX = digitsStartX + (6 * config.digitWidth); // Always 6 digits
+                const meterX = digitsEndX;
+
+                // Show and position all 6 digits with appropriate opacity
+                for (let i = 0; i < 6; i++) {
+                    const digitChar = heightString[i];
+                    const digitValue = parseInt(digitChar);
+                    const digitSprite = this.heightDigits[i];
+
+                    // Set the correct digit texture
+                    digitSprite.setTexture(`digit_${digitValue}`);
+
+                    // Position the digit using the pre-calculated Y position
+                    digitSprite.setPosition(
+                        digitsStartX + (i * config.digitWidth),
+                        config.digitY
+                    );
+
+                    // Set opacity: leading zeros get 0.4, significant digits get 1.0
+                    const opacity = i < firstNonZeroIndex ? 0.4 : 1.0;
+                    digitSprite.setAlpha(opacity);
+
+                    // Always visible (no more hiding/showing)
+                    digitSprite.setVisible(true);
+                }
+
+                // Position the "m" label using pre-calculated position
+                this.meterLabel.setPosition(meterX, config.meterY);
+            }
+
             updateHeightDisplay() {
                 const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
                 const heightAboveSeaInPixels = shipFloatingPosition - this.ship.y;
@@ -1727,7 +2330,9 @@
 
                 this.currentHeight = heightInMeters;
                 this.maxHeight = Math.max(this.maxHeight, heightInMeters);
-                this.heightText.setText(`Height: ${heightInMeters}m`);
+
+                // Update sprite-based display instead of text
+                this.updateSpriteHeightDisplay(heightInMeters);
             }
 
             updateCamera() {
@@ -1760,10 +2365,11 @@
                     return;
                 }
 
-                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
-                const shipAtSeaLevel = this.ship.y >= shipFloatingPosition;
+                // Changed death detection: die when ship is 100 pixels below sea surface
+                const deathLine = this.SEA_LEVEL + 100;
+                const shipBelowDeathLine = this.ship.y >= deathLine;
 
-                if (shipAtSeaLevel) {
+                if (shipBelowDeathLine) {
                     if (this.getTotalCannonballs() <= 0 && this.ship.body.velocity.y >= -50) {
                         if (!this.gameOverTimer) {
                             this.gameOverTimer = this.time.now;
@@ -1782,6 +2388,85 @@
                 }
             }
 
+            createWaterSplashAnimation() {
+                // Create 8 water splash sprites at sea level near the ship
+                const splashY = this.SEA_LEVEL + 100;
+                const splashes = [];
+
+                for (let i = 0; i < 8; i++) {
+                    const splash = this.add.image(this.ship.x, splashY, 'water_splash');
+                    splash.setScale(0.8); // Consistent size
+                    splash.setDepth(1500); // Above most game elements
+
+                    // Determine direction: 4 left, 4 right
+                    const isLeftSide = i < 4;
+                    const sideIndex = i % 4;
+
+                    // Use left side as base logic, just flip sprite for right side
+                    const baseVelX = 100 + (sideIndex * 40); // Always positive (left direction)
+                    const baseVelY = -100 - (sideIndex * 25); // Upward velocity
+
+                    // Position splash slightly offset from center
+                    const offsetX = 60 + (sideIndex * 20); // Always positive offset
+                    splash.x = this.ship.x + (isLeftSide ? -offsetX : offsetX);
+
+                    // Handle sprite direction: flip horizontally for right side
+                    splash.setFlipX(!isLeftSide); // Flip for right side only
+
+                    // Add randomness to timing for natural variation
+                    const riseRandomness = Phaser.Math.Between(-50, 50); // ±50ms variation
+                    const fallRandomness = Phaser.Math.Between(-50, 50); // ±50ms variation
+                    const riseTime = 200 + riseRandomness; // 150-250ms
+                    const fallTime = 300 + fallRandomness; // 250-350ms
+
+                    splashes.push(splash);
+
+                    // Horizontal movement - same logic, just negate X velocity for left side
+                    this.tweens.add({
+                        targets: splash,
+                        x: splash.x + (isLeftSide ? -baseVelX : baseVelX),
+                        duration: riseTime + fallTime, // Total arc duration
+                        ease: 'Sine.easeOut' // More natural arc movement
+                    });
+
+                    // Create smooth arc: up with deceleration, then down with acceleration
+                    this.tweens.add({
+                        targets: splash,
+                        y: splashY + baseVelY,
+                        duration: riseTime,
+                        ease: 'Sine.easeOut', // Smooth deceleration to apex
+                        onComplete: () => {
+                            // Smooth fall back down
+                            this.tweens.add({
+                                targets: splash,
+                                y: this.cameras.main.height + 100,
+                                duration: fallTime,
+                                ease: 'Sine.easeIn', // Smooth acceleration down
+                                onComplete: () => splash.destroy()
+                            });
+                        }
+                    });
+
+                    // Unified rotation - same for all sprites
+                    this.tweens.add({
+                        targets: splash,
+                        rotation: Math.PI / 8, // Same small rotation for everyone
+                        duration: riseTime + fallTime,
+                        ease: 'Linear'
+                    });
+
+                    // Fade out during fall - starts when this specific splash starts falling
+                    this.time.delayedCall(riseTime, () => {
+                        this.tweens.add({
+                            targets: splash,
+                            alpha: 0,
+                            duration: fallTime,
+                            ease: 'Power2.easeIn'
+                        });
+                    });
+                }
+            }
+
             gameOver(playWaterSplash = true) {
                 if (this.gameState === 'gameOver') return;
 
@@ -1797,9 +2482,10 @@
                 this.filterSetupComplete = false; // Reset filter setup
                 this.originalMusicSource = null; // Reset source tracking
 
-                // Play water splash sound only if falling back to water (not self-destruct)
+                // Play water splash sound and animation only if falling back to water
                 if (playWaterSplash) {
                     this.sound.play('water_splash');
+                    this.createWaterSplashAnimation();
                 }
 
                 if (this.maxHeight > this.personalBest) {
@@ -1815,78 +2501,9 @@
                 this.cameraFollowing = false;
 
                 this.time.delayedCall(2000, () => {
+                    this.physics.world.resume();
+                    this.tweens.resumeAll();
                     this.showGameOverScreen();
-                });
-            }
-
-            showGameOverScreen() {
-                // Stop following and return camera to initial position
-                this.cameras.main.stopFollow();
-                this.cameras.main.setScroll(0, this.SEA_LEVEL - 1025); // Show more sky (was -800)
-
-                // Show title elements without animation
-                this.gameElements.forEach(element => element.setVisible(false));
-                this.backgroundRects.forEach(rect => rect.setVisible(false));
-                this.uiElements.forEach(element => element.setVisible(false));
-                this.clouds.forEach(cloud => cloud.setVisible(false));
-                this.titleElements.forEach(element => element.setVisible(true));
-                this.gameState = 'gameOver';
-
-                // Position AESOPNE image higher up for better spacing
-                this.titleImage.setPosition(450, 300);
-                this.titleImage.setVisible(true);
-
-                // Create "It's over..." text with better spacing - 30% bigger
-                this.gameOverText = this.add.text(450, 520, "It's over...", {
-                    fontSize: '64px',
-                    fill: '#e74c3c',
-                    fontWeight: 'bold',
-                    align: 'center'
-                }).setOrigin(0.5);
-                this.gameOverText.setScrollFactor(0);
-                this.gameOverText.setDepth(2001);
-
-                // Create height text with more spacing - 40% bigger - NOW AS INSTANCE VARIABLE
-                this.gameOverHeightText = this.add.text(450, 640, `You went ${this.maxHeight}m high.`, {
-                    fontSize: '50px',
-                    fill: '#ffffff',
-                    fontWeight: 'normal',
-                    align: 'center'
-                }).setOrigin(0.5);
-                this.gameOverHeightText.setScrollFactor(0);
-                this.gameOverHeightText.setDepth(2001);
-
-                // Calculate distance to moon and create moon text with better spacing - 40% bigger - NOW AS INSTANCE VARIABLE
-                const moonDistance = 384400000; // Distance to moon in meters
-                const remaining = moonDistance - this.maxHeight;
-                this.gameOverMoonText = this.add.text(450, 760, `The Moon is ${remaining.toLocaleString()}m away. 
-                Keep going!`, {
-                    fontSize: '40px',
-                    fill: '#ecf0f1',
-                    fontWeight: 'normal',
-                    align: 'center'
-                }).setOrigin(0.5);
-                this.gameOverMoonText.setScrollFactor(0);
-                this.gameOverMoonText.setDepth(2001);
-
-                // Position play button at settled position and make it interactive
-                this.playButton.setPosition(450, 1120); // 70% of screen
-                this.playButton.setInteractive();
-
-                // Farcade SDK: Hide our play button and call SDK gameOver after a delay
-                if (window.FarcadeSDK) {
-                    this.playButton.setVisible(false); // Hide our button since Farcade UI takes over
-                    
-                    this.time.delayedCall(1000, () => {
-                        window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
-                        console.log('Farcade SDK: Game over signal sent with score:', this.maxHeight);
-                    });
-                }
-
-                this.playButton.removeAllListeners();
-                this.playButton.on('pointerdown', () => {
-                    this.sound.play('tap_button');
-                    this.startGame();
                 });
             }
 
@@ -2083,6 +2700,11 @@
                 console.log('Farcade SDK: Play again requested.');
                 const activeScene = game.scene.getScene('VerticalLauncher');
                 if (activeScene && activeScene.startGame) {
+                    // IMPORTANT: Clean up game over elements before restarting
+                    if (activeScene.hideGameOverElements) {
+                        activeScene.hideGameOverElements();
+                        console.log('Farcade SDK: Game over elements cleaned up.');
+                    }
                     activeScene.startGame();
                     console.log('Farcade SDK: Game restarted.');
                 } else {
@@ -2103,4 +2725,4 @@
     </script>
 </body>
 
-</html>
+</html>"
