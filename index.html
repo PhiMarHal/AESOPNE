@@ -929,14 +929,14 @@
                 this.helpPopupBG = this.add.rectangle(450, 800, 720, 1180, 0x2c3e50);
                 this.helpPopupBG.setScrollFactor(0);
                 this.helpPopupBG.setDepth(2000);
-                this.helpPopupBG.setStrokeStyle(4, 0xffffff);
+                this.helpPopupBG.setStrokeStyle(4, 0xFFD800);
                 this.helpPopupBG.setInteractive();
 
                 // Create help title - bigger and better positioned
                 this.helpTitle = this.add.text(450, 350, 'HOW TO PLAY', {
                     fontSize: '64px',
-                    fill: '#ffffff',
-                    fontWeight: 'bold',
+                    fill: '#CB9024',
+                    fontFamily: 'Impact, "Arial Black", sans-serif',
                     align: 'center'
                 }).setOrigin(0.5);
                 this.helpTitle.setScrollFactor(0);
@@ -961,18 +961,18 @@
 
                 this.helpContent = this.add.text(450, 760, helpText, {
                     fontSize: '32px',
-                    fill: '#ecf0f1',
-                    fontWeight: 'bold',
+                    fill: '#FFD800',
+                    fontFamily: 'Arial Black',
                     align: 'left',
                     lineSpacing: 8,
-                    wordWrap: { width: 620 }
+                    wordWrap: { width: 820 }
                 }).setOrigin(0.5);
                 this.helpContent.setScrollFactor(0);
                 this.helpContent.setDepth(2001);
 
                 // Create self-destruct button - better positioned
-                this.destructButton = this.add.image(450, 1200, 'button_destruct');
-                this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                this.destructButton = this.add.image(450, 1240, 'button_destruct');
+                this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 4, this.CANNONBALL_SIZE * 4);
                 this.destructButton.setScrollFactor(0);
                 this.destructButton.setDepth(2002); // Higher depth to ensure it's on top
                 this.destructButton.setInteractive();
@@ -1086,7 +1086,6 @@
                 this.gameState = 'playing';
             }
 
-            // Updated showTitleScreen method with new positioning
             showTitleScreen() {
                 this.gameElements.forEach(element => element.setVisible(false));
                 this.backgroundRects.forEach(rect => rect.setVisible(false));
@@ -1095,9 +1094,22 @@
                 this.titleElements.forEach(element => element.setVisible(true));
                 this.gameState = 'menu';
 
+                // Create title screen ship if it doesn't exist
+                if (!this.titleShip) {
+                    this.titleShip = this.add.image(450, 800, 'ship'); // 50% height
+                    this.titleShip.setDisplaySize(384, 384); // Normal game ship size
+                    this.titleShip.setScrollFactor(0);
+                    this.titleShip.setDepth(2000);
+                    this.titleElements.push(this.titleShip); // Add to title elements for proper management
+
+                    // Start gentle swaying animation
+                    this.startTitleShipSway();
+                }
+
                 // Reset positions for animation - NEW POSITIONS
                 this.titleImage.setPosition(450, -150);
                 this.playButton.setPosition(450, -200);
+                this.titleShip.setVisible(true);
 
                 // Remove button interactivity during animation
                 this.playButton.disableInteractive();
@@ -1161,6 +1173,42 @@
                     }
                 });
             }
+
+            startTitleShipSway() {
+                // Clean up any existing animations
+                if (this.titleShipSway) {
+                    this.titleShipSway.destroy();
+                }
+                if (this.titleShipBob) {
+                    this.titleShipBob.destroy();
+                }
+
+                // Create gentle rotational swaying motion (like rocking in waves)
+                const maxRotation = Phaser.Math.DegToRad(-8); // Slightly less than game's 10 degrees
+                this.titleShipSway = this.tweens.add({
+                    targets: this.titleShip,
+                    rotation: -maxRotation,
+                    duration: 4000, // 2 seconds - slower and gentler than game
+                    ease: 'Sine.easeInOut',
+                    yoyo: true, // Rock back and forth
+                    repeat: -1, // Infinite loop
+                    onStart: () => {
+                        // Set initial rotation to +8 degrees so it rocks to -8 first
+                        this.titleShip.setRotation(maxRotation);
+                    }
+                });
+
+                // Create subtle vertical bobbing motion (simulating floating on water)
+                this.titleShipBob = this.tweens.add({
+                    targets: this.titleShip,
+                    y: 790, // Bob up 10px from center (800px)
+                    duration: 3000, // 3 seconds - different timing for natural feel
+                    ease: 'Sine.easeInOut',
+                    yoyo: true, // Bob up and down
+                    repeat: -1 // Infinite loop
+                });
+            }
+
 
             // Game over screen setup methods
             setupGameOverDigitDisplays() {
@@ -1237,9 +1285,11 @@
             setupGameOverMessageSystem() {
                 // Message options
                 this.gameOverMessages = [
-                    "it's so over...",
+                    "To win the game, fly to the Moon",
+                    "It's so over...",
+                    "Perfect run, changed my life forever - 3 stars",
                     "It's pronounced Ass-Pony",
-                    "Perfect run, changed my life forever - 3 stars"
+                    "TGE happens only if you play KAJISULI"
                 ];
                 this.currentMessageIndex = 0;
 
@@ -1423,6 +1473,13 @@
                 this.titleElements.forEach(element => element.setVisible(true));
                 this.gameState = 'gameOver';
 
+                if (this.titleShip) {
+                    this.titleShip.setVisible(false);
+                    // Reset ship position and rotation for when it shows again
+                    this.titleShip.setPosition(450, 800);
+                    this.titleShip.setRotation(0);
+                }
+
                 // Position AESOPNE image at 15% (same as updated title screen)
                 this.titleImage.setPosition(450, 240);
                 this.titleImage.setVisible(true);
@@ -1482,6 +1539,12 @@
             }
 
             showGameScreen() {
+                // Stop title ship sway animation when transitioning to game
+                if (this.titleShipSway) {
+                    this.titleShipSway.destroy();
+                    this.titleShipSway = null;
+                }
+
                 // No physics bodies to clean up since we're using tweens now
                 this.titleElements.forEach(element => element.setVisible(false));
                 this.gameElements.forEach(element => element.setVisible(true));
