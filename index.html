@@ -131,6 +131,7 @@
                 this.load.image('ship', ASSET_BASE + '/assets/ship.png');
                 this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
                 this.load.image('wing', ASSET_BASE + '/assets/wing.png');
+                this.load.image('water_splash', ASSET_BASE + '/assets/water_splash.png');
 
                 this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
                 this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
@@ -187,7 +188,7 @@
                 this.lastBackgroundUpdate = 0;
                 this.backgroundUpdateInterval = 500; // Update every 500ms
 
-                // Create initial background elements around starting area
+                // Create initial background elements
                 this.createBackgroundElements();
 
                 // Create UI areas - fixed to camera
@@ -317,13 +318,13 @@
 
                 // Replace text with image - set to user's preferred size
                 this.titleImage = this.add.image(450, -100, 'title_aesopne'); // Start above screen for physics animation
-                this.titleImage.setDisplaySize(600, 300);
+                this.titleImage.setDisplaySize(600, 400);
                 this.titleImage.setOrigin(0.5);
                 this.titleImage.setScrollFactor(0);
                 this.titleImage.setDepth(2001);
 
                 this.playButton = this.add.image(450, -200, 'button_start'); // Start above screen for physics animation
-                this.playButton.setDisplaySize(432, 216); // 20% bigger (was 360x180)
+                this.playButton.setDisplaySize(450, 300); // 20% bigger (was 360x180)
                 this.playButton.setScrollFactor(0);
                 this.playButton.setDepth(2001);
 
@@ -915,9 +916,10 @@
 • do NOT press the selfdestruct 
   button`;
 
-                this.helpContent = this.add.text(450, 700, helpText, {
-                    fontSize: '28px',
+                this.helpContent = this.add.text(450, 760, helpText, {
+                    fontSize: '32px',
                     fill: '#ecf0f1',
+                    fontWeight: 'bold',
                     align: 'left',
                     lineSpacing: 8,
                     wordWrap: { width: 620 }
@@ -926,7 +928,7 @@
                 this.helpContent.setDepth(2001);
 
                 // Create self-destruct button - better positioned
-                this.destructButton = this.add.image(450, 1050, 'button_destruct');
+                this.destructButton = this.add.image(450, 1200, 'button_destruct');
                 this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
                 this.destructButton.setScrollFactor(0);
                 this.destructButton.setDepth(2002); // Higher depth to ensure it's on top
@@ -1805,10 +1807,11 @@
                     return;
                 }
 
-                const shipFloatingPosition = this.SEA_LEVEL - this.SHIP_SIZE / 2;
-                const shipAtSeaLevel = this.ship.y >= shipFloatingPosition;
+                // Changed death detection: die when ship is 100 pixels below sea surface
+                const deathLine = this.SEA_LEVEL + 100;
+                const shipBelowDeathLine = this.ship.y >= deathLine;
 
-                if (shipAtSeaLevel) {
+                if (shipBelowDeathLine) {
                     if (this.getTotalCannonballs() <= 0 && this.ship.body.velocity.y >= -50) {
                         if (!this.gameOverTimer) {
                             this.gameOverTimer = this.time.now;
@@ -1827,6 +1830,85 @@
                 }
             }
 
+            createWaterSplashAnimation() {
+                // Create 8 water splash sprites at sea level near the ship
+                const splashY = this.SEA_LEVEL + 100;
+                const splashes = [];
+
+                for (let i = 0; i < 8; i++) {
+                    const splash = this.add.image(this.ship.x, splashY, 'water_splash');
+                    splash.setScale(0.8); // Consistent size
+                    splash.setDepth(1500); // Above most game elements
+
+                    // Determine direction: 4 left, 4 right
+                    const isLeftSide = i < 4;
+                    const sideIndex = i % 4;
+
+                    // Use left side as base logic, just flip sprite for right side
+                    const baseVelX = 100 + (sideIndex * 40); // Always positive (left direction)
+                    const baseVelY = -100 - (sideIndex * 25); // Upward velocity
+
+                    // Position splash slightly offset from center
+                    const offsetX = 60 + (sideIndex * 20); // Always positive offset
+                    splash.x = this.ship.x + (isLeftSide ? -offsetX : offsetX);
+
+                    // Handle sprite direction: flip horizontally for right side
+                    splash.setFlipX(!isLeftSide); // Flip for right side only
+
+                    // Add randomness to timing for natural variation
+                    const riseRandomness = Phaser.Math.Between(-50, 50); // ±50ms variation
+                    const fallRandomness = Phaser.Math.Between(-50, 50); // ±50ms variation
+                    const riseTime = 200 + riseRandomness; // 150-250ms
+                    const fallTime = 300 + fallRandomness; // 250-350ms
+
+                    splashes.push(splash);
+
+                    // Horizontal movement - same logic, just negate X velocity for left side
+                    this.tweens.add({
+                        targets: splash,
+                        x: splash.x + (isLeftSide ? -baseVelX : baseVelX),
+                        duration: riseTime + fallTime, // Total arc duration
+                        ease: 'Sine.easeOut' // More natural arc movement
+                    });
+
+                    // Create smooth arc: up with deceleration, then down with acceleration
+                    this.tweens.add({
+                        targets: splash,
+                        y: splashY + baseVelY,
+                        duration: riseTime,
+                        ease: 'Sine.easeOut', // Smooth deceleration to apex
+                        onComplete: () => {
+                            // Smooth fall back down
+                            this.tweens.add({
+                                targets: splash,
+                                y: this.cameras.main.height + 100,
+                                duration: fallTime,
+                                ease: 'Sine.easeIn', // Smooth acceleration down
+                                onComplete: () => splash.destroy()
+                            });
+                        }
+                    });
+
+                    // Unified rotation - same for all sprites
+                    this.tweens.add({
+                        targets: splash,
+                        rotation: Math.PI / 8, // Same small rotation for everyone
+                        duration: riseTime + fallTime,
+                        ease: 'Linear'
+                    });
+
+                    // Fade out during fall - starts when this specific splash starts falling
+                    this.time.delayedCall(riseTime, () => {
+                        this.tweens.add({
+                            targets: splash,
+                            alpha: 0,
+                            duration: fallTime,
+                            ease: 'Power2.easeIn'
+                        });
+                    });
+                }
+            }
+
             gameOver(playWaterSplash = true) {
                 if (this.gameState === 'gameOver') return;
 
@@ -1842,9 +1924,10 @@
                 this.filterSetupComplete = false; // Reset filter setup
                 this.originalMusicSource = null; // Reset source tracking
 
-                // Play water splash sound only if falling back to water (not self-destruct)
+                // Play water splash sound and animation only if falling back to water
                 if (playWaterSplash) {
                     this.sound.play('water_splash');
+                    this.createWaterSplashAnimation();
                 }
 
                 if (this.maxHeight > this.personalBest) {
@@ -2115,4 +2198,4 @@
     </script>
 </body>
 
-</html>
+</html>"
