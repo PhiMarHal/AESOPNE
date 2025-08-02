@@ -1215,7 +1215,7 @@
                 this.cannon.setRotation(this.cannonAngle);
 
                 // Clear projectiles
-                this.flyingBalls.clear(true, true);
+                this.cleanupFlyingBalls();
                 this.cannonballProjectiles.clear(true, true);
 
                 // Camera follows ship with instant following
@@ -1658,6 +1658,24 @@
 
                     console.log(`Collected ball! Total: ${this.getTotalCannonballs()}, Rolling: ${this.isRollingCannonballs}`);
                 }
+            }
+
+            cleanupFlyingBalls() {
+                // Properly destroy all flying balls and their attached components
+                this.flyingBalls.children.entries.forEach(ball => {
+                    if (ball.leftWing) {
+                        ball.leftWing.destroy();
+                    }
+                    if (ball.rightWing) {
+                        ball.rightWing.destroy();
+                    }
+                    if (ball.flag) {
+                        ball.flag.destroy();
+                    }
+                });
+
+                // Now clear the group
+                this.flyingBalls.clear(true, true);
             }
 
             updateCannonballUI() {
