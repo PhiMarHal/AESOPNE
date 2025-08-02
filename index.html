@@ -231,15 +231,7 @@
                 this.questFlagIcon.setDepth(1000);
                 this.questFlagIcon.setVisible(false);
 
-                this.questCountText = this.add.text(760, 100, '4', {
-                    fontSize: '72px', // 50% bigger (was 48px)
-                    fill: '#FFD700',
-                    fontWeight: 'bold'
-                }).setOrigin(0.5);
-                this.questCountBaseScale = this.questCountText.scaleX;
-                this.questCountText.setScrollFactor(0);
-                this.questCountText.setDepth(1000);
-                this.questCountText.setVisible(false);
+                this.setupQuestDigitDisplay();
 
                 // Create cannonball UI with new positioning - rightmost slot centered at 450
                 this.cannonballUI = [];
@@ -305,7 +297,7 @@
                 this.uiElements = [
                     this.topUI, this.bottomUI,
                     this.heightLabel, ...this.heightDigits, this.meterLabel,
-                    this.questFlagIcon, this.questCountText, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cannonballUIFlags, ...this.cooldownGraphics,
+                    this.questFlagIcon, this.questDigit, ...this.cannonballPlaceholders, ...this.cannonballUI, ...this.cannonballUIFlags, ...this.cooldownGraphics,
                     this.helpButton
                 ];
 
@@ -803,6 +795,55 @@
                 return this.superShotReady;
             }
 
+            setupQuestDigitDisplay() {
+                const questDigitX = 760; // Same position as the old text
+                const questDigitY = 100;
+                const digitWidth = 36; // Same size as height digits
+                const digitHeight = 54; // Same size as height digits
+
+                // Center the digit vertically like the height display
+                const digitCenterY = questDigitY - (digitHeight / 2);
+
+                // Create single quest count digit sprite
+                this.questDigit = this.add.image(questDigitX, digitCenterY, 'digit_4'); // Start with 4
+                this.questDigit.setOrigin(0.5, 0); // Center horizontally, top-align vertically
+                this.questDigit.setScrollFactor(0);
+                this.questDigit.setDepth(1000);
+                this.questDigit.setDisplaySize(digitWidth, digitHeight);
+                this.questDigit.setVisible(false); // Hidden initially like the quest system
+
+                // Store the base scale for animations (like the original quest system)
+                this.questDigitBaseScale = this.questDigit.scaleX;
+
+                // Store config for easy access
+                this.questDigitConfig = {
+                    x: questDigitX,
+                    y: digitCenterY,
+                    width: digitWidth,
+                    height: digitHeight
+                };
+
+                // Initialize
+                this.currentDisplayedQuestCount = -1; // Force initial update
+            }
+
+            updateQuestDigitDisplay(count) {
+                // Skip update if count hasn't changed (performance optimization)
+                if (count === this.currentDisplayedQuestCount) {
+                    return;
+                }
+
+                this.currentDisplayedQuestCount = count;
+
+                // Clamp to single digit (0-9)
+                const digitValue = Math.max(0, Math.min(9, count));
+
+                // Update the digit texture
+                this.questDigit.setTexture(`digit_${digitValue}`);
+            }
+
+            // Updated quest system methods to use sprites instead of text
+
             startNewQuest() {
                 // Select a random flag type for the new quest
                 const flagTypes = ['flag_milady', 'flag_bayc', 'flag_noun', 'flag_doodle'];
@@ -818,8 +859,9 @@
                 this.questFlagIcon.setTexture(this.questTargetFlag);
                 this.questFlagIcon.setVisible(true);
 
-                this.questCountText.setText(this.questTargetCount.toString());
-                this.questCountText.setVisible(true);
+                // Update digit display instead of text
+                this.updateQuestDigitDisplay(this.questTargetCount);
+                this.questDigit.setVisible(true);
 
                 this.questLevel++;
             }
@@ -832,9 +874,9 @@
 
                     console.log(`🎯 Quest progress: ${this.questCurrentCount}/${this.questTargetCount} ${flagType} collected`);
 
-                    // Visual feedback - use the correct base scales
+                    // Visual feedback - use the digit scale instead of text scale
                     const targetFlagScale = this.questFlagBaseScale * 1.4;
-                    const targetCountScale = this.questCountBaseScale * 1.4;
+                    const targetDigitScale = this.questDigitBaseScale * 1.4;
 
                     this.tweens.add({
                         targets: this.questFlagIcon,
@@ -846,16 +888,16 @@
                     });
 
                     this.tweens.add({
-                        targets: this.questCountText,
-                        scaleX: targetCountScale,
-                        scaleY: targetCountScale,
+                        targets: this.questDigit,
+                        scaleX: targetDigitScale,
+                        scaleY: targetDigitScale,
                         duration: 200,
                         ease: 'Back.easeOut',
                         yoyo: true
                     });
 
-                    // Update UI
-                    this.questCountText.setText(remaining.toString());
+                    // Update digit display instead of text
+                    this.updateQuestDigitDisplay(remaining);
 
                     // Check if quest is complete
                     if (remaining <= 0) {
@@ -1175,7 +1217,6 @@
 
                 // Hide quest UI initially
                 this.questFlagIcon.setVisible(false);
-                this.questCountText.setVisible(false);
 
                 // Reset cloud system
                 this.cloudGridData.clear();
@@ -1897,6 +1938,7 @@
                 // Update sprite-based display instead of text
                 this.updateSpriteHeightDisplay(heightInMeters);
             }
+
             updateCamera() {
                 if (this.gameState !== 'playing') return;
 
