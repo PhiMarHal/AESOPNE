@@ -1966,8 +1966,8 @@
                 this.titleImage.setPosition(450, 300);
                 this.titleImage.setVisible(true);
 
-                // Create "It's over..." text with better spacing - 30% bigger
-                this.gameOverText = this.add.text(450, 520, "It's over...", {
+                // Create "It's over..." text 
+                this.gameOverText = this.add.text(450, 550, "It's over...", {
                     fontSize: '64px',
                     fill: '#e74c3c',
                     fontWeight: 'bold',
@@ -1977,7 +1977,7 @@
                 this.gameOverText.setDepth(2001);
 
                 // Create height text with more spacing - 40% bigger - NOW AS INSTANCE VARIABLE
-                this.gameOverHeightText = this.add.text(450, 640, `You went ${this.maxHeight}m high.`, {
+                this.gameOverHeightText = this.add.text(450, 660, `You went ${this.maxHeight}m high.`, {
                     fontSize: '50px',
                     fill: '#ffffff',
                     fontWeight: 'normal',
@@ -1989,7 +1989,7 @@
                 // Calculate distance to moon and create moon text with better spacing - 40% bigger - NOW AS INSTANCE VARIABLE
                 const moonDistance = 384400000; // Distance to moon in meters
                 const remaining = moonDistance - this.maxHeight;
-                this.gameOverMoonText = this.add.text(450, 760, `The Moon is ${remaining.toLocaleString()}m away. 
+                this.gameOverMoonText = this.add.text(450, 780, `The Moon is ${remaining.toLocaleString()}m away. 
                 Keep going!`, {
                     fontSize: '40px',
                     fill: '#ecf0f1',
