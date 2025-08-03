@@ -651,9 +651,9 @@
                     // Better cloud type selection to ensure both types appear
                     const cloudType = pseudoRandom(cloudSeed + 2) > 0.5 ? 'cloud_1' : 'cloud_2';
 
-                    // Ensure proper scale range 0.2-0.6
+                    // Ensure proper scale range
                     const scaleRandom = pseudoRandom(cloudSeed + 3);
-                    const finalScale = 0.2 + (scaleRandom * 0.4);
+                    const finalScale = 0.4 + (scaleRandom * 0.8);
 
                     clouds.push({
                         x: x,
