@@ -44,6 +44,7 @@
                 this.CANNON_POWER = 3000;
                 this.SEA_LEVEL = 1400; // Back to original
                 this.SHIP_SIZE = 384;
+                this.SHIP_COLLISION = 192;
                 this.CANNON_SIZE = 96;
                 this.CANNONBALL_SIZE = 48;
                 this.FLYING_BALL_SIZE = 80;
@@ -128,15 +129,15 @@
                 this.cameras.main.setBackgroundColor(0x2c3e50);
 
                 // Sprites
-                this.load.image('ship', ASSET_BASE + '/assets/ship.png');
+                this.load.image('ship', ASSET_BASE + '/assets/shipb.png');
                 this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
                 this.load.image('wing', ASSET_BASE + '/assets/wing.png');
                 this.load.image('water_splash', ASSET_BASE + '/assets/water_splash.png');
 
                 this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
                 this.load.image('cloud_flag', ASSET_BASE + '/assets/cloud_flag.png');
-                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
-                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2.png');
+                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1b.png');
+                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2b.png');
                 this.load.image('button_help', ASSET_BASE + '/assets/button_help.png');
                 this.load.image('button_destruct', ASSET_BASE + '/assets/button_destruct.png');
                 this.load.image('button_start', ASSET_BASE + '/assets/button_start.png');
@@ -214,7 +215,7 @@
                 // Create ship
                 this.ship = this.physics.add.sprite(450, this.SEA_LEVEL, 'ship');
                 this.ship.setDisplaySize(this.SHIP_SIZE, this.SHIP_SIZE);
-                this.ship.body.setSize(this.SHIP_SIZE, this.SHIP_SIZE);
+                this.ship.body.setSize(this.SHIP_COLLISION, this.SHIP_COLLISION);
                 this.ship.body.setGravityY(0);
                 this.ship.body.setCollideWorldBounds(false);
                 this.ship.body.setDrag(0.98);
@@ -1290,6 +1291,7 @@
                     "Perfect run, changed my life forever. 3/5",
                     "It's pronounced Ass-Pony",
                     "TGE happens once you play KAJISULI",
+                    "Instructions suck --@trump.0045",
                     `Your personal best: ${this.personalBest}m`
                 ];
                 this.currentMessageIndex = 0;
