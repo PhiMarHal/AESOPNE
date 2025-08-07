@@ -45,6 +45,7 @@
                 this.CANNON_POWER = 3000;
                 this.SEA_LEVEL = 1400; // Back to original
                 this.SHIP_SIZE = 384;
+                this.SHIP_COLLISION = 192;
                 this.CANNON_SIZE = 96;
                 this.CANNONBALL_SIZE = 48;
                 this.FLYING_BALL_SIZE = 80;
@@ -129,14 +130,15 @@
                 this.cameras.main.setBackgroundColor(0x2c3e50);
 
                 // Sprites
-                this.load.image('ship', ASSET_BASE + '/assets/ship.png');
+                this.load.image('ship', ASSET_BASE + '/assets/shipb.png');
                 this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
                 this.load.image('wing', ASSET_BASE + '/assets/wing.png');
                 this.load.image('water_splash', ASSET_BASE + '/assets/water_splash.png');
 
                 this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
-                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1.png');
-                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2.png');
+                this.load.image('cloud_flag', ASSET_BASE + '/assets/cloud_flag.png');
+                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1b.png');
+                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2b.png');
                 this.load.image('button_help', ASSET_BASE + '/assets/button_help.png');
                 this.load.image('button_destruct', ASSET_BASE + '/assets/button_destruct.png');
                 this.load.image('button_start', ASSET_BASE + '/assets/button_start.png');
@@ -214,7 +216,7 @@
                 // Create ship
                 this.ship = this.physics.add.sprite(450, this.SEA_LEVEL, 'ship');
                 this.ship.setDisplaySize(this.SHIP_SIZE, this.SHIP_SIZE);
-                this.ship.body.setSize(this.SHIP_SIZE, this.SHIP_SIZE);
+                this.ship.body.setSize(this.SHIP_COLLISION, this.SHIP_COLLISION);
                 this.ship.body.setGravityY(0);
                 this.ship.body.setCollideWorldBounds(false);
                 this.ship.body.setDrag(0.98);
@@ -651,9 +653,9 @@
                     // Better cloud type selection to ensure both types appear
                     const cloudType = pseudoRandom(cloudSeed + 2) > 0.5 ? 'cloud_1' : 'cloud_2';
 
-                    // Ensure proper scale range 0.2-0.6
+                    // Ensure proper scale range
                     const scaleRandom = pseudoRandom(cloudSeed + 3);
-                    const finalScale = 0.2 + (scaleRandom * 0.4);
+                    const finalScale = 0.4 + (scaleRandom * 0.8);
 
                     clouds.push({
                         x: x,
@@ -1009,7 +1011,6 @@
                                 originalY + Phaser.Math.Between(-150, 150),
                                 'explosion'
                             );
-                            explosion.setScale(0.5);
                             this.tweens.add({
                                 targets: explosion,
                                 scaleX: 1,
@@ -1294,9 +1295,11 @@
                 this.gameOverMessages = [
                     "To win the game, fly to the Moon",
                     "It's so over...",
-                    "Perfect run, changed my life forever - 3 stars",
+                    "Perfect run, changed my life forever. 3/5",
                     "It's pronounced Ass-Pony",
-                    "TGE happens only if you play KAJISULI"
+                    "TGE happens once you play KAJISULI",
+                    "Instructions suck --@trump.0045",
+                    `Your personal best: ${this.personalBest}m`
                 ];
                 this.currentMessageIndex = 0;
 
@@ -1611,8 +1614,16 @@
                 this.questCurrentCount = 0;
                 this.questLevel = 1;
 
+                // Reset personal best flag state for new game
+                this.personalBestFlagShown = false;
+                this.cleanupPersonalBestFlag(); // Clean up any existing flag
+
+                // Set up personal best flag system for this game
+                this.setupPersonalBestCloudFlag();
+
                 // Hide quest UI initially
                 this.questFlagIcon.setVisible(false);
+                this.questDigit.setVisible(false);
 
                 // Reset cloud system
                 this.cloudGridData.clear();
@@ -2491,7 +2502,6 @@
                 if (this.maxHeight > this.personalBest) {
                     this.personalBest = this.maxHeight;
                     localStorage.setItem('verticalLauncherBest', this.personalBest.toString());
-                    this.personalBestText.setText(`Best: ${this.personalBest}m`);
                 }
 
                 this.ship.setVelocity(0, 0);
@@ -2505,6 +2515,64 @@
                     this.tweens.resumeAll();
                     this.showGameOverScreen();
                 });
+            }
+
+            // Add to create() method after other UI setup
+            setupPersonalBestCloudFlag() {
+                // Initialize flag state
+                this.personalBestFlag = null;
+                this.personalBestFlagShown = false;
+            }
+
+            // Add to your update() method in the playing state
+            updatePersonalBestFlag() {
+                if (this.personalBest <= 0) return;
+
+                const currentHeight = this.currentHeight;
+                const showDistance = 200; // Show flag when within 200m of personal best
+
+                // Show flag once when player gets close to their personal best
+                if (currentHeight >= this.personalBest - showDistance && !this.personalBestFlagShown) {
+                    this.showPersonalBestFlag();
+                    this.personalBestFlagShown = true;
+                }
+            }
+
+            showPersonalBestFlag() {
+                if (this.personalBestFlag) return; // Already exists
+
+                // Calculate positions
+                const flagX = this.ship.x; // Place at player's current X position
+                const flagY = this.SEA_LEVEL - (this.personalBest * this.PIXELS_PER_METER);
+
+                // Create cloud flag sprite at the exact spot
+                this.personalBestFlag = this.add.image(flagX, flagY, 'cloud_flag');
+                this.personalBestFlag.setDisplaySize(400, 400); // Adjust size as needed
+                this.personalBestFlag.setDepth(15); // Above clouds but below flying balls
+
+                // Optional: Add just the gentle floating animation (no horizontal movement)
+                this.personalBestFlagFloat = this.tweens.add({
+                    targets: this.personalBestFlag,
+                    y: flagY - 20, // Float up 20px
+                    duration: 1000,
+                    ease: 'Sine.easeInOut',
+                    yoyo: true,
+                    repeat: -1
+                });
+
+                console.log(`Personal best flag shown at ${this.personalBest}m altitude`);
+            }
+
+            cleanupPersonalBestFlag() {
+                // Clean up flag and animations
+                if (this.personalBestFlag) {
+                    this.personalBestFlag.destroy();
+                    this.personalBestFlag = null;
+                }
+                if (this.personalBestFlagFloat) {
+                    this.personalBestFlagFloat.destroy();
+                    this.personalBestFlagFloat = null;
+                }
             }
 
             update(time, delta) {
@@ -2629,6 +2697,7 @@
 
                 // Update dynamic background system
                 this.updateDynamicBackground();
+                this.updatePersonalBestFlag();
 
                 // Check for altitude-based spawning
                 this.checkAltitudeSpawning();

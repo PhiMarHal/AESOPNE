@@ -60,7 +60,7 @@ function injectFarcadeGameLogic(html) {
                 if (window.FarcadeSDK) {
                     this.playButton.setVisible(false); // Hide our button since Farcade UI takes over
                     
-                    this.time.delayedCall(1000, () => {
+                    this.time.delayedCall(4000, () => {
                         window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
                         console.log('Farcade SDK: Game over signal sent with score:', this.maxHeight);
                     });
@@ -78,7 +78,7 @@ function injectFarcadeGameLogic(html) {
 
                 // Farcade SDK: Call gameOver after button setup (fallback injection)
                 if (window.FarcadeSDK) {
-                    this.time.delayedCall(2000, () => {
+                    this.time.delayedCall(4000, () => {
                         window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
                         console.log('Farcade SDK: Game over signal sent with score (fallback):', this.maxHeight);
                     });
