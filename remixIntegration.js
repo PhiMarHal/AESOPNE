@@ -51,8 +51,9 @@ function injectFarcadeGameLogic(html) {
                 }`;
     });
 
-    // 2. UPDATED: Inject gameOver() call in showGameOverScreen() - updated pattern for new layout
-    const gameOverScreenPattern = /(this\.playButton\.setPosition\(450, 1360\);[\s\S]*?this\.playButton\.setInteractive\(\);)/;
+    // 2. IMPROVED: More robust pattern that doesn't depend on exact positioning
+    // Look for the play button setup in showGameOverScreen, regardless of coordinates
+    const gameOverScreenPattern = /(this\.playButton\.setPosition\([^)]+\);\s*this\.playButton\.setInteractive\(\);)/;
     modifiedHtml = modifiedHtml.replace(gameOverScreenPattern, (match) => {
         return `${match}
 
@@ -67,26 +68,49 @@ function injectFarcadeGameLogic(html) {
                 }`;
     });
 
-    // 3. FALLBACK: If the above pattern doesn't match, try a more generic approach
+    // 3. ALTERNATIVE: Even more robust fallback - look for the click handler setup
     if (!modifiedHtml.includes('window.FarcadeSDK.singlePlayer.actions.gameOver')) {
-        console.log('Primary gameOver pattern not found, trying fallback pattern...');
+        console.log('Primary gameOver pattern not found, trying alternative pattern...');
 
-        // Look for the play again button setup in showGameOverScreen
-        const fallbackPattern = /(this\.playButton\.removeAllListeners\(\);[\s\S]*?this\.startGame\(\);[\s\S]*?\}\);)/;
-        modifiedHtml = modifiedHtml.replace(fallbackPattern, (match) => {
+        // Look for the removeAllListeners and click handler pattern
+        const alternativePattern = /(this\.playButton\.removeAllListeners\(\);\s*this\.playButton\.on\('pointerdown', \(\) => \{[\s\S]*?this\.startGame\(\);[\s\S]*?\}\);)/;
+        modifiedHtml = modifiedHtml.replace(alternativePattern, (match) => {
             return `${match}
 
-                // Farcade SDK: Call gameOver after button setup (fallback injection)
+                // Farcade SDK: Hide button and call gameOver (alternative injection)
                 if (window.FarcadeSDK) {
+                    this.playButton.setVisible(false); // Hide our button since Farcade UI takes over
+                    
                     this.time.delayedCall(4000, () => {
                         window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
-                        console.log('Farcade SDK: Game over signal sent with score (fallback):', this.maxHeight);
+                        console.log('Farcade SDK: Game over signal sent with score (alternative):', this.maxHeight);
                     });
                 }`;
         });
     }
 
-    // 4. Inject event handlers after the Phaser game instance is created
+    // 4. LAST RESORT: Look for end of showGameOverScreen method
+    if (!modifiedHtml.includes('window.FarcadeSDK.singlePlayer.actions.gameOver')) {
+        console.log('Alternative pattern not found, trying end-of-method pattern...');
+
+        // Look for the end of showGameOverScreen method (closing brace after play button setup)
+        const endOfMethodPattern = /(showGameOverScreen\(\) \{[\s\S]*?this\.playButton\.on\('pointerdown'[\s\S]*?\}\);)(\s*\})/;
+        modifiedHtml = modifiedHtml.replace(endOfMethodPattern, (match, methodBody, closingBrace) => {
+            return `${methodBody}
+
+                // Farcade SDK: Hide button and call gameOver (end-of-method injection)
+                if (window.FarcadeSDK) {
+                    this.playButton.setVisible(false); // Hide our button since Farcade UI takes over
+                    
+                    this.time.delayedCall(4000, () => {
+                        window.FarcadeSDK.singlePlayer.actions.gameOver({ score: this.maxHeight });
+                        console.log('Farcade SDK: Game over signal sent with score (end-of-method):', this.maxHeight);
+                    });
+                }${closingBrace}`;
+        });
+    }
+
+    // 5. Inject event handlers after the Phaser game instance is created
     const phaserGameInstancePattern = /(const game = new Phaser\.Game\(config\);)/;
     modifiedHtml = modifiedHtml.replace(phaserGameInstancePattern, (match) => {
         return `${match}
