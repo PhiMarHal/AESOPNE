@@ -62,7 +62,7 @@
                 this.personalBest = 0;
                 this.flyingBallSpawnRate = 2000;
                 this.flyingBallTimer = 0;
-                this.lastPointerPosition = { x: 450, y: 800 };
+                this.lastPointerPosition = { x: 534, y: 800 }; // Updated center X
                 this.cannonAngle = 0;
                 this.cameraFollowing = false;
                 this.gameStartTime = null;
@@ -99,8 +99,8 @@
                 this.cloudCheckInterval = 300; // Check every 300ms
 
                 // UI positioning - will be set dynamically
-                this.gameWidth = 900;
-                this.gameHeight = 1600;
+                this.gameWidth = 1068;  // Updated width
+                this.gameHeight = 1602; // Updated height
 
                 // Music system
                 this.musicStarted = false;
@@ -165,47 +165,6 @@
                 this.load.audio('water_splash', 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/8722124e-976e-4d2a-89ae-dda0d636c22d/water_splash-eklR96otjJob9QVQRw625PnX8cnBaW.mp3?Gm2Q');
                 this.load.image('water_splash', 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/8722124e-976e-4d2a-89ae-dda0d636c22d/water_splash-ofQl7YMBTaJivELr5ye01TyHvxiBKq.png?LW1k');
                 this.load.image('wing', 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/8722124e-976e-4d2a-89ae-dda0d636c22d/wing-yDYeqJhsIKYt2ah5jR9IOX7uIsr3u4.png?hXoj');
-
-                /*
-                // Sprites
-                this.load.image('ship', ASSET_BASE + '/assets/shipb.png');
-                this.load.image('cannonball', ASSET_BASE + '/assets/cannonball.png');
-                this.load.image('wing', ASSET_BASE + '/assets/wing.png');
-                this.load.image('water_splash', ASSET_BASE + '/assets/water_splash.png');
-
-                this.load.image('cannon', ASSET_BASE + '/assets/cannon.png');
-                this.load.image('cloud_flag', ASSET_BASE + '/assets/cloud_flag.png');
-                this.load.image('cloud_1', ASSET_BASE + '/assets/cloud_1b.png');
-                this.load.image('cloud_2', ASSET_BASE + '/assets/cloud_2b.png');
-                this.load.image('button_help', ASSET_BASE + '/assets/button_help.png');
-                this.load.image('button_destruct', ASSET_BASE + '/assets/button_destruct.png');
-                this.load.image('button_start', ASSET_BASE + '/assets/button_start.png');
-                this.load.image('flag_milady', ASSET_BASE + '/assets/flag_milady.png');
-                this.load.image('flag_bayc', ASSET_BASE + '/assets/flag_bayc.png');
-                this.load.image('flag_noun', ASSET_BASE + '/assets/flag_noun.png');
-                this.load.image('flag_doodle', ASSET_BASE + '/assets/flag_doodle.png');
-                this.load.image('title_aesopne', ASSET_BASE + '/assets/title_aesopne.png');
-                this.load.image('explosion', ASSET_BASE + '/assets/explosion.png');
-                this.load.image('arrow', `${ASSET_BASE}/assets/arrow.png`);
-
-                // Load digit sprites (0-9)
-                for (let i = 0; i < 10; i++) {
-                    this.load.image(`digit_${i}`, `${ASSET_BASE}/assets/digit_${i}.png`);
-                }
-
-                // Load height label sprite
-                this.load.image('height_label', `${ASSET_BASE}/assets/height_label.png`);
-                this.load.image('meter_label', `${ASSET_BASE}/assets/meter_label.png`);
-
-                // Sounds
-                this.load.audio('rolling_ball', ASSET_BASE + '/assets/rolling_ball.mp3');
-                this.load.audio('cannon_shot', ASSET_BASE + '/assets/cannon_shot.mp3');
-                this.load.audio('super_shot', ASSET_BASE + '/assets/super_shot.mp3');
-                this.load.audio('water_splash', ASSET_BASE + '/assets/water_splash.mp3');
-                this.load.audio('ball_pickup', ASSET_BASE + '/assets/ball_pickup.mp3');
-                this.load.audio('tap_button', ASSET_BASE + '/assets/tap_button.mp3');
-                */
-                // Note: Music will be loaded later during title screen
             }
 
             create() {
@@ -242,17 +201,17 @@
                 // Create initial background elements
                 this.createBackgroundElements();
 
-                // Create UI areas - fixed to camera
-                this.topUI = this.add.rectangle(450, 100, 900, 200, 0x34495e);
+                // Create UI areas - fixed to camera (updated for new dimensions)
+                this.topUI = this.add.rectangle(534, 100, 1068, 200, 0x34495e);
                 this.topUI.setScrollFactor(0);
                 this.topUI.setDepth(999);
 
-                this.bottomUI = this.add.rectangle(450, 1500, 900, 200, 0x34495e);
+                this.bottomUI = this.add.rectangle(534, 1502, 1068, 200, 0x34495e);
                 this.bottomUI.setScrollFactor(0);
                 this.bottomUI.setDepth(999);
 
-                // Create ship
-                this.ship = this.physics.add.sprite(450, this.SEA_LEVEL, 'ship');
+                // Create ship (centered at new width)
+                this.ship = this.physics.add.sprite(534, this.SEA_LEVEL, 'ship');
                 this.ship.setDisplaySize(this.SHIP_SIZE, this.SHIP_SIZE);
                 this.ship.body.setSize(this.SHIP_COLLISION, this.SHIP_COLLISION);
                 this.ship.body.setGravityY(0);
@@ -265,9 +224,9 @@
                 this.cannon.setDisplaySize(this.CANNON_SIZE, this.CANNON_SIZE * 2);
                 this.cannon.setOrigin(0.5, 0.5);
 
-                // Create quest UI elements - positioned at 60-70% to the right
-                this.questFlagIcon = this.add.image(650, 100, 'flag_milady');
-                this.questFlagIcon.setDisplaySize(120, 120); // 2x bigger for better visibility
+                // Create quest UI elements - positioned with more spacing for wider screen
+                this.questFlagIcon = this.add.image(820, 100, 'flag_milady'); // Moved further right
+                this.questFlagIcon.setDisplaySize(160, 160); // 2x bigger for better visibility
                 this.questFlagBaseScale = this.questFlagIcon.scaleX;
                 this.questFlagIcon.setScrollFactor(0);
                 this.questFlagIcon.setDepth(1000);
@@ -275,17 +234,17 @@
 
                 this.setupQuestDigitDisplay();
 
-                // Create cannonball UI with new positioning - rightmost slot centered at 450
+                // Create cannonball UI with better spacing for wider screen
                 this.cannonballUI = [];
                 this.cannonballUIFlags = []; // Flags for UI cannonballs
                 this.cannonballPlaceholders = []; // Gray placeholders always visible
                 this.cooldownGraphics = [];
-                this.cannonballSlotPositions = [90, 210, 330, 450]; // Rightmost slot at center
+                this.cannonballSlotPositions = [114, 254, 394, 534];
 
                 for (let i = 0; i < 4; i++) {
                     // Create gray placeholder (always visible)
-                    const placeholder = this.add.image(this.cannonballSlotPositions[i], 1500, 'cannonball');
-                    placeholder.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                    const placeholder = this.add.image(this.cannonballSlotPositions[i], 1502, 'cannonball');
+                    placeholder.setDisplaySize(this.CANNONBALL_SIZE * 2.1, this.CANNONBALL_SIZE * 2.1);
                     placeholder.setScrollFactor(0);
                     placeholder.setDepth(999); // Behind actual cannonballs
                     placeholder.setTint(0x7f8c8d);
@@ -293,15 +252,15 @@
                     this.cannonballPlaceholders.push(placeholder);
 
                     // Create actual cannonball (shows when slot is filled)
-                    const ball = this.add.image(this.cannonballSlotPositions[i], 1500, 'cannonball');
-                    ball.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                    const ball = this.add.image(this.cannonballSlotPositions[i], 1502, 'cannonball');
+                    ball.setDisplaySize(this.CANNONBALL_SIZE * 2.1, this.CANNONBALL_SIZE * 2.1);
                     ball.setScrollFactor(0);
                     ball.setDepth(1000); // On top of placeholders
                     this.cannonballUI.push(ball);
 
                     // Create flag for cannonball (starts hidden)
-                    const flag = this.add.image(this.cannonballSlotPositions[i], 1500, 'flag_milady'); // Default texture
-                    flag.setDisplaySize(72, 72); // Better size for UI cannonballs
+                    const flag = this.add.image(this.cannonballSlotPositions[i], 1502, 'flag_milady'); // Default texture
+                    flag.setDisplaySize(80, 80); // Better size for UI cannonballs
                     flag.setScrollFactor(0);
                     flag.setDepth(1001); // On top of cannonballs
                     flag.setVisible(false);
@@ -314,9 +273,10 @@
                     this.cooldownGraphics.push(cooldownGraphic);
                 }
 
-                // Create help button - symmetric with leftmost cannonball
-                this.helpButton = this.add.image(810, 1500, 'button_help'); // 810 = 450 + (450-90)
-                this.helpButton.setDisplaySize(this.CANNONBALL_SIZE * 1.9, this.CANNONBALL_SIZE * 1.9);
+                // Create help button - positioned symmetrically with better spacing
+                this.helpButton = this.add.image(961, 1502, 'button_help'); // Closer to right edge
+                this.helpButton.setDisplaySize(this.CANNONBALL_SIZE * 2.4, this.CANNONBALL_SIZE * 2.4);
+
                 this.helpButton.setScrollFactor(0);
                 this.helpButton.setDepth(1000);
                 this.helpButton.setInteractive();
@@ -343,30 +303,30 @@
                     this.helpButton
                 ];
 
-                // Create title screen
-                this.titleBG = this.add.rectangle(450, 800, 900, 1600, 0x2c3e50);
+                // Create title screen (updated for new dimensions)
+                this.titleBG = this.add.rectangle(534, 801, 1068, 1602, 0x2c3e50);
                 this.titleBG.setScrollFactor(0);
                 this.titleBG.setDepth(2000);
 
                 // Replace text with image - set to user's preferred size
-                this.titleImage = this.add.image(450, -100, 'title_aesopne'); // Start above screen for physics animation
+                this.titleImage = this.add.image(534, -100, 'title_aesopne'); // Start above screen for physics animation
                 this.titleImage.setDisplaySize(800, 400);
                 this.titleImage.setOrigin(0.5);
                 this.titleImage.setScrollFactor(0);
                 this.titleImage.setDepth(2001);
 
-                this.playButton = this.add.image(450, -200, 'button_start'); // Start above screen for physics animation
+                this.playButton = this.add.image(534, -200, 'button_start'); // Start above screen for physics animation
                 this.playButton.setDisplaySize(450, 300); // 20% bigger (was 360x180)
                 this.playButton.setScrollFactor(0);
                 this.playButton.setDepth(2001);
 
-                // Create invisible physics floors for bouncing animation - updated positions
-                this.titleFloor = this.add.rectangle(450, 480, 900, 50, 0x000000); // 30% of screen (480px)
+                // Create invisible physics floors for bouncing animation - updated positions for new height
+                this.titleFloor = this.add.rectangle(534, 480, 1068, 50, 0x000000); // 30% of screen
                 this.titleFloor.setScrollFactor(0);
                 this.titleFloor.setDepth(1999);
                 this.titleFloor.setVisible(false);
 
-                this.buttonFloor = this.add.rectangle(450, 1120, 900, 50, 0x000000); // 70% of screen (1120px)
+                this.buttonFloor = this.add.rectangle(534, 1122, 1068, 50, 0x000000); // 70% of screen
                 this.buttonFloor.setScrollFactor(0);
                 this.buttonFloor.setDepth(1999);
                 this.buttonFloor.setVisible(false);
@@ -375,8 +335,6 @@
 
                 // Start with title screen
                 this.showTitleScreen();
-
-
 
                 // Set up interactions - but don't make interactive yet (physics animation will handle this)
                 this.playButton.on('pointerdown', () => {
@@ -417,7 +375,7 @@
 
                 this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-                // Physics
+                // Physics (updated for new dimensions)
                 this.physics.world.setBounds(-100000, this.SEA_LEVEL - 300000, 200000, 300000);
                 this.physics.add.overlap(this.ship, this.flyingBalls, this.collectFlyingBall, null, this);
 
@@ -838,10 +796,10 @@
             }
 
             setupQuestDigitDisplay() {
-                const questDigitX = 760; // Same position as the old text
+                const questDigitX = 960; // Adjusted for wider screen spacing
                 const questDigitY = 100;
-                const digitWidth = 36; // Same size as height digits
-                const digitHeight = 54; // Same size as height digits
+                const digitWidth = 60;
+                const digitHeight = 90;
 
                 // Center the digit vertically like the height display
                 const digitCenterY = questDigitY - (digitHeight / 2);
@@ -966,15 +924,15 @@
                 // Store and pause all tweens
                 this.tweens.pauseAll();
 
-                // Create help popup background - 2:3 ratio
-                this.helpPopupBG = this.add.rectangle(450, 800, 720, 1180, 0x2c3e50);
+                // Create help popup background - 2:3 ratio (adjusted for new screen dimensions)
+                this.helpPopupBG = this.add.rectangle(534, 801, 800, 1200, 0x2c3e50);
                 this.helpPopupBG.setScrollFactor(0);
                 this.helpPopupBG.setDepth(2000);
                 this.helpPopupBG.setStrokeStyle(4, 0xFFD800);
                 this.helpPopupBG.setInteractive();
 
                 // Create help title - bigger and better positioned
-                this.helpTitle = this.add.text(450, 350, 'HOW TO PLAY', {
+                this.helpTitle = this.add.text(534, 350, 'HOW TO PLAY', {
                     fontSize: '64px',
                     fill: '#CB9024',
                     fontFamily: 'Impact, "Arial Black", sans-serif',
@@ -1000,7 +958,7 @@
 • do NOT press the selfdestruct 
   button`;
 
-                this.helpContent = this.add.text(450, 760, helpText, {
+                this.helpContent = this.add.text(534, 760, helpText, {
                     fontSize: '32px',
                     fill: '#FFD800',
                     fontFamily: 'Arial Black',
@@ -1012,7 +970,7 @@
                 this.helpContent.setDepth(2001);
 
                 // Create self-destruct button - better positioned
-                this.destructButton = this.add.image(450, 1240, 'button_destruct');
+                this.destructButton = this.add.image(534, 1280, 'button_destruct');
                 this.destructButton.setDisplaySize(this.CANNONBALL_SIZE * 4, this.CANNONBALL_SIZE * 4);
                 this.destructButton.setScrollFactor(0);
                 this.destructButton.setDepth(2002); // Higher depth to ensure it's on top
@@ -1080,11 +1038,11 @@
                 // Add outside click handler with a delay to avoid immediate closure
                 this.time.delayedCall(100, () => {
                     this.helpOutsideClickHandler = (pointer) => {
-                        // Calculate popup bounds
-                        const popupLeft = 450 - 360; // 450 - (720/2)
-                        const popupRight = 450 + 360; // 450 + (720/2)
-                        const popupTop = 800 - 590; // 800 - (1180/2)
-                        const popupBottom = 800 + 590; // 800 + (1180/2)
+                        // Calculate popup bounds (adjusted for new screen center)
+                        const popupLeft = 534 - 400; // 534 - (800/2)
+                        const popupRight = 534 + 400; // 534 + (800/2)
+                        const popupTop = 801 - 600; // 801 - (1200/2)
+                        const popupBottom = 801 + 600; // 801 + (1200/2)
 
                         // Check if click is outside popup bounds
                         if (pointer.x < popupLeft || pointer.x > popupRight ||
@@ -1134,9 +1092,9 @@
                 this.titleElements.forEach(element => element.setVisible(true));
                 this.gameState = 'menu';
 
-                // Create title screen ship if it doesn't exist
+                // Create title screen ship if it doesn't exist (centered at new width)
                 if (!this.titleShip) {
-                    this.titleShip = this.add.image(450, 800, 'ship'); // 50% height
+                    this.titleShip = this.add.image(534, 801, 'ship'); // 50% height, centered
                     this.titleShip.setDisplaySize(384, 384); // Normal game ship size
                     this.titleShip.setScrollFactor(0);
                     this.titleShip.setDepth(2000);
@@ -1146,18 +1104,18 @@
                     this.startTitleShipSway();
                 }
 
-                // Reset positions for animation - NEW POSITIONS
-                this.titleImage.setPosition(450, -150);
-                this.playButton.setPosition(450, -200);
+                // Reset positions for animation - NEW POSITIONS (updated for new screen dimensions)
+                this.titleImage.setPosition(534, -150);
+                this.playButton.setPosition(534, -200);
                 this.titleShip.setVisible(true);
 
                 // Remove button interactivity during animation
                 this.playButton.disableInteractive();
 
-                // AESOPNE animation: 15% of screen (240px)
+                // AESOPNE animation: 15% of screen (updated for new height)
                 this.tweens.add({
                     targets: this.titleImage,
-                    y: 240, // 15% of screen (was 160)
+                    y: 240, // 15% of 1602px = 240px
                     duration: 200,
                     ease: 'Power2.easeIn',
                     onComplete: () => {
@@ -1178,25 +1136,25 @@
                     }
                 });
 
-                // START animation: 85% of screen (1360px)
+                // START animation: 85% of screen (updated for new height)
                 this.time.delayedCall(500, () => {
                     this.loadMusicAsync();
 
                     this.tweens.add({
                         targets: this.playButton,
-                        y: 1360, // 85% of screen (was 1320)
+                        y: 1362, // 85% of 1602px = 1362px
                         duration: 200,
                         ease: 'Power2.easeIn',
                         onComplete: () => {
                             this.tweens.add({
                                 targets: this.playButton,
-                                y: 1300, // Bounce up 60px
+                                y: 1302, // Bounce up 60px
                                 duration: 100,
                                 ease: 'Power2.easeOut',
                                 onComplete: () => {
                                     this.tweens.add({
                                         targets: this.playButton,
-                                        y: 1360, // Back to final position
+                                        y: 1362, // Back to final position
                                         duration: 100,
                                         ease: 'Power2.easeIn'
                                     });
@@ -1241,7 +1199,7 @@
                 // Create subtle vertical bobbing motion (simulating floating on water)
                 this.titleShipBob = this.tweens.add({
                     targets: this.titleShip,
-                    y: 790, // Bob up 10px from center (800px)
+                    y: 791, // Bob up 10px from center (801px)
                     duration: 3000, // 3 seconds - different timing for natural feel
                     ease: 'Sine.easeInOut',
                     yoyo: true, // Bob up and down
@@ -1255,7 +1213,7 @@
                 const digitWidth = 48;
                 const digitHeight = 72;
 
-                // "YOU REACHED" display at 35% height (560px)
+                // "YOU REACHED" display at 35% height (updated for new screen dimensions)
                 this.reachedDigits = [];
                 this.maxReachedDigits = 6;
 
@@ -1288,7 +1246,7 @@
                 this.reachedMeterLabel.setDisplaySize(32, 32);
                 this.reachedMeterLabel.setVisible(false);
 
-                // Moon distance display at 65% height (1040px)
+                // Moon distance display at 65% height (updated for new screen dimensions)
                 this.moonDigits = [];
                 this.maxMoonDigits = 9; // Moon distance is huge, need more digits
 
@@ -1336,8 +1294,8 @@
                 ];
                 this.currentMessageIndex = 0;
 
-                // Create the rotating message text at 50% height (800px)
-                this.gameOverMessage = this.add.text(450, 800, this.gameOverMessages[0], {
+                // Create the rotating message text at 50% height (updated for new screen dimensions)
+                this.gameOverMessage = this.add.text(534, 801, this.gameOverMessages[0], {
                     fontSize: '64px',
                     fill: '#ffffff',
                     fontFamily: 'Impact, "Arial Black", sans-serif',
@@ -1348,8 +1306,8 @@
                 this.gameOverMessage.setDepth(2001);
                 this.gameOverMessage.setVisible(false);
 
-                // Create left arrow - 2x bigger
-                this.leftArrow = this.add.image(50, 800, 'arrow');
+                // Create left arrow - 2x bigger (updated positioning for new width)
+                this.leftArrow = this.add.image(60, 801, 'arrow');
                 this.leftArrow.setOrigin(0.5);
                 this.leftArrow.setScrollFactor(0);
                 this.leftArrow.setDepth(2001);
@@ -1357,8 +1315,8 @@
                 this.leftArrow.setVisible(false);
                 this.leftArrow.setInteractive();
 
-                // Create right arrow (mirrored) - 2x bigger
-                this.rightArrow = this.add.image(850, 800, 'arrow');
+                // Create right arrow (mirrored) - 2x bigger (updated positioning for new width)
+                this.rightArrow = this.add.image(1008, 801, 'arrow');
                 this.rightArrow.setOrigin(0.5);
                 this.rightArrow.setScrollFactor(0);
                 this.rightArrow.setDepth(2001);
@@ -1426,14 +1384,14 @@
                     firstNonZeroIndex = 5;
                 }
 
-                // Position everything centered at 30% height (was 35%)
-                const centerX = 450;
-                const labelY = 460; // Label above digits (30% height)
-                const digitY = 520; // Digits below label
-                const totalDigitWidth = 6 * 48; // 6 digits × 36px each
+                // Position everything centered at 30% height (updated for new screen dimensions)
+                const centerX = 534;
+                const labelY = 481; // 30% of 1602px = 480px, label above digits
+                const digitY = 541; // Digits below label
+                const totalDigitWidth = 6 * 58; // 6 digits × 58px each (updated size)
                 const digitsStartX = centerX - (totalDigitWidth / 2);
                 const meterX = digitsStartX + totalDigitWidth;
-                const meterY = digitY + 54 - 32; // Bottom-align with digits
+                const meterY = digitY + 87 - 38; // Bottom-align meter with digits (updated sizes)
 
                 // Position and show "YOU REACHED" text
                 this.youReachedLabel.setPosition(centerX, labelY);
@@ -1446,7 +1404,7 @@
                     const digitSprite = this.reachedDigits[i];
 
                     digitSprite.setTexture(`digit_${digitValue}`);
-                    digitSprite.setPosition(digitsStartX + (i * 48), digitY);
+                    digitSprite.setPosition(digitsStartX + (i * 58), digitY); // Updated spacing
 
                     const opacity = i < firstNonZeroIndex ? 0.4 : 1.0;
                     digitSprite.setAlpha(opacity);
@@ -1470,14 +1428,14 @@
                     }
                 }
 
-                // Position everything centered at 65% height
-                const centerX = 450;
-                const digitY = 1000; // Digits 
-                const labelY = 1140; // Label further below digits (was 1080)
-                const totalDigitWidth = 9 * 48; // 9 digits × 36px each
+                // Position everything centered at 65% height (updated for new screen dimensions)
+                const centerX = 534;
+                const digitY = 1041; // 65% of 1602px = 1041px
+                const labelY = 1181; // Label further below digits
+                const totalDigitWidth = 9 * 58; // 9 digits × 58px each (updated size)
                 const digitsStartX = centerX - (totalDigitWidth / 2);
                 const meterX = digitsStartX + totalDigitWidth;
-                const meterY = digitY + 54 - 32; // Bottom-align with digits
+                const meterY = digitY + 87 - 38; // Bottom-align meter with digits (updated sizes)
 
                 // Position and show digits
                 for (let i = 0; i < 9; i++) {
@@ -1486,7 +1444,7 @@
                     const digitSprite = this.moonDigits[i];
 
                     digitSprite.setTexture(`digit_${digitValue}`);
-                    digitSprite.setPosition(digitsStartX + (i * 48), digitY);
+                    digitSprite.setPosition(digitsStartX + (i * 58), digitY); // Updated spacing
 
                     const opacity = i < firstNonZeroIndex ? 0.4 : 1.0;
                     digitSprite.setAlpha(opacity);
@@ -1504,7 +1462,7 @@
 
             // Updated showGameOverScreen method
             showGameOverScreen() {
-                // Stop following and return camera to initial position
+                // Stop following and return camera to initial position (updated for new screen dimensions)
                 this.cameras.main.stopFollow();
                 this.cameras.main.setScroll(0, this.SEA_LEVEL - 1025);
 
@@ -1518,13 +1476,13 @@
 
                 if (this.titleShip) {
                     this.titleShip.setVisible(false);
-                    // Reset ship position and rotation for when it shows again
-                    this.titleShip.setPosition(450, 800);
+                    // Reset ship position and rotation for when it shows again (updated for new center)
+                    this.titleShip.setPosition(534, 801);
                     this.titleShip.setRotation(0);
                 }
 
                 // Position AESOPNE image at 15% (same as updated title screen)
-                this.titleImage.setPosition(450, 240);
+                this.titleImage.setPosition(534, 240);
                 this.titleImage.setVisible(true);
 
                 // Set up game over displays if not already created
@@ -1551,8 +1509,8 @@
                 const remaining = moonDistance - this.maxHeight;
                 this.updateGameOverMoonDisplay(remaining);
 
-                // Position play button at 85% and make it interactive
-                this.playButton.setPosition(450, 1360);
+                // Position play button at 85% and make it interactive (updated for new screen dimensions)
+                this.playButton.setPosition(534, 1362);
                 this.playButton.setInteractive();
 
                 this.playButton.removeAllListeners();
@@ -1673,7 +1631,7 @@
                 this.isAscending = false;
                 this.wasAscending = false;
 
-                // Reset ship position and physics
+                // Reset ship position and physics (updated for new center position)
                 this.ship.setPosition(this.ship.x, this.SEA_LEVEL);
                 this.ship.setVelocity(0, 0);
                 this.ship.body.setAllowGravity(false);
@@ -2201,8 +2159,8 @@
                     // Only show circle on rightmost slot that has a cannonball
                     if (i === 3 && this.cannonballSlots[i]) {
                         const x = this.cannonballSlotPositions[i];
-                        const y = 1500;
-                        let radius = this.CANNONBALL_SIZE + 4;
+                        const y = 1502;
+                        let radius = this.CANNONBALL_SIZE + 8;
 
                         // Super Shot pulsing effect!
                         if (canFire && isSuperShot) {
@@ -2241,15 +2199,15 @@
             setupSpriteHeightDisplay() {
                 const startX = 40;
                 const labelCenterY = 100; // Vertical center point for alignment
-                const digitWidth = 36; // Updated to 36x54
-                const digitHeight = 54; // Updated to 36x54
-                const labelHeight = 48; // Keep height, will adjust width for 3:1 ratio
-                const labelWidth = 144; // 3:1 ratio (144:48)
+                const digitWidth = 44; // Updated to 36x54
+                const digitHeight = 66; // Updated to 36x54
+                const labelHeight = 64; // Keep height, will adjust width for 3:1 ratio
+                const labelWidth = 192; // 3:1 ratio (144:48)
 
                 // Calculate Y positions for proper centering
                 const labelY = labelCenterY - (labelHeight / 2); // Center label at y=70
                 const digitY = labelCenterY - (digitHeight / 2); // Center digits at y=70
-                const meterY = labelCenterY + (digitHeight / 2) - 32; // Bottom-align meter with digits
+                const meterY = labelCenterY + (digitHeight / 2) - 48; // Bottom-align meter with digits
 
                 // Create "Height:" label sprite with 3:1 ratio
                 this.heightLabel = this.add.image(startX, labelY, 'height_label');
@@ -2277,7 +2235,7 @@
                 this.meterLabel.setOrigin(0, 0);
                 this.meterLabel.setScrollFactor(0);
                 this.meterLabel.setDepth(1000);
-                this.meterLabel.setDisplaySize(32, 32);
+                this.meterLabel.setDisplaySize(48, 48);
 
                 // Store layout info
                 this.heightDisplayConfig = {
@@ -2288,8 +2246,8 @@
                     digitWidth: digitWidth,
                     digitHeight: digitHeight,
                     labelWidth: labelWidth,
-                    meterWidth: 32,
-                    spacing: 48 // Increased to about a digit width (was 12)
+                    meterWidth: 48,
+                    spacing: 64 // Increased to about a digit width (was 12)
                 };
 
                 // Initialize with 000000
@@ -2766,8 +2724,8 @@
 
         const config = {
             type: Phaser.AUTO,
-            width: 900,
-            height: 1600,
+            width: 1068,
+            height: 1602,
             parent: 'game-container',
             physics: {
                 default: 'arcade',
@@ -2787,4 +2745,4 @@
     </script>
 </body>
 
-</html>"
+</html>
